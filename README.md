@@ -102,7 +102,7 @@ Building on Windows is not recommended as the environment setup is not optimized
 
 - Install [Visual Studio Community](https://visualstudio.microsoft.com/vs/community/) and make sure to select the "Desktop development with C++" workload.
 
-- Find `Developer PowerShell for VS 2022` in the start menu and open it.
+- Find `x64 Native Tools Command Prompt for VS 2022` in the start menu and open it.
 
 - Use the following commands to create the `build` directory and set up the Makefile:
 
