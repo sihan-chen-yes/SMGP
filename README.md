@@ -44,7 +44,7 @@ git clone --recursive https://github.com/eth-igl/gp24-'Your_Git_Username'.git
 ```
 or if you are using SSH:
 ```bash
-git clone --recursive git@github.com:eth-igl/gp2024-'Your_Git_Username'.git
+git clone --recursive git@github.com:eth-igl/gp24-'Your_Git_Username'.git
 ```
 'Your_Git_Username' needs to be replaced accordingly. This can take a moment.
 
