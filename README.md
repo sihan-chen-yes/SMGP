@@ -2,10 +2,10 @@
 
 ## Student data
 
-Name: 'Your real name'  
-Legi-Nr: 'Your legi number'
+Name: 'Sihan Chen'  
+Legi-Nr: '23-943-079'
 
-Email: 'Your email address'
+Email: 'sihchen@student.ethz.ch'
 
 Carefully follow the instructions below to setup your assignment repository.
 
