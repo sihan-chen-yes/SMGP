@@ -1,0 +1,8 @@
+build
+*.o
+*/.idea
+*/.vscode
+*.json
+.DS_Store
+release
+debug
