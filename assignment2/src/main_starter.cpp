@@ -61,6 +61,7 @@ void evaluateImplicitFunc_PolygonSoup();
 void getLines();
 void pcaNormal();
 bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers);
+bool isClosest(Eigen::Vector3d point, int index);
 
 // Creates a grid_points array for the simple sphere example. The points are
 // stacked into a single matrix, ordered first in the x, then in the y and
@@ -209,6 +210,49 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers)
         viewer.core().align_camera_center(P);
         // Add your code for computing auxiliary constraint points here
         // Add code for displaying all points, as above
+        //calculate bounding_box_diagonal length
+        Eigen::RowVectorXd p_min = P.row(0);
+        Eigen::RowVectorXd p_max = P.row(0);
+        int n = P.rows();
+        for (int i = 0; i < n; i++) {
+            p_min = p_min.cwiseMin(P.row(i));
+            p_max = p_max.cwiseMax(P.row(i));
+        }
+        double bounding_box_diagonal = (p_max - p_min).norm();
+        constrained_points.resize(2 * n, 3);
+        constrained_values.resize(2 * n, 1);
+
+        double eps;
+        // add constrained points
+        for (int i = 0; i < n; i++) {
+            eps = 0.01 * bounding_box_diagonal;
+            //find outside constrained point
+            Eigen::RowVectorXd P_i_N = P.row(i) + eps * N.row(i).normalized();
+            while (!isClosest(P_i_N, i)) {
+                eps *= 0.5;
+                P_i_N = P.row(i) + eps * N.row(i).normalized();
+            }
+            constrained_points.row(i) = P_i_N;
+            constrained_values.row(i) << eps;
+
+            //find outside constrained point
+            eps = 0.01 * bounding_box_diagonal;
+            Eigen::RowVectorXd P_i_2N = P.row(i) - eps * N.row(i).normalized();
+            while (!isClosest(P_i_2N, i)) {
+                eps *= 0.5;
+                P_i_2N = P.row(i) - eps * N.row(i).normalized();
+            }
+            constrained_points.row(i + n) = P_i_2N;
+            constrained_values.row(i + n) << -eps;
+        }
+        
+        // Blue for original points
+        viewer.data().point_size = 11;
+        viewer.data().add_points(P, Eigen::RowVector3d(0, 0, 1));
+        // Red for outside points
+        viewer.data().add_points(constrained_points.block(0, 0, n, 3), Eigen::RowVector3d(1, 0, 0));
+        // Green for inside points
+        viewer.data().add_points(constrained_points.block(n, 0, n, 3), Eigen::RowVector3d(0, 1, 0));
     }
 
     if (key == '3')
@@ -346,6 +390,19 @@ bool callback_load_mesh(Viewer &viewer, string filename)
     return true;
 }
 
+bool isClosest(Eigen::Vector3d point, int index) {
+    double min_dist = (P.row(index).transpose() - point).squaredNorm();
+    for (int i = 0; i < P.rows(); i++) {
+        if (i != index) {
+            double dist = (P.row(i).transpose() - point).squaredNorm();
+            if (dist <= min_dist) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 2)
@@ -391,3 +448,4 @@ int main(int argc, char *argv[])
 
     viewer.launch();
 }
+
