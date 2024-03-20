@@ -45,5 +45,5 @@ Please show your answer in screenshot/photos (or link to a PDF). Make sure your 
 | :---------:  | :---------:  | :-----------------: | :-----------------: |
 | cat          |<img align="center"  src="./res/cat_MLS.png">| <img align="center"  src="./res/cat_possion.png"> |<img align="center"  src="./res/cat_RIMLS.png"> |
 | luigi        |<img align="center"  src="./res/luigi_MLS.png">| <img align="center"  src="./res/luigi_possion.png"> |<img align="center"  src="./res/luigi_RIMLS.png"> |
-| comments        | 1.The bottom of cat has some spurious sheets, like RIMLS, but worse <br />2.Can't reconstruct sharp features well, e.g., the nose of Luigi | 1. No spurious sheets far from surface, e.g., bottom of cat)<br /> 2.Robust to outliers | 1.Robust to outliers <br />2.Better reconstruction of sharp features, e.g., the hat edge of Luigi |
+| comments        | 1.The bottom, upper arm of cat has some spurious sheets, like RIMLS, but worse <br />2.Can't reconstruct sharp features well, e.g., the nose of Luigi | 1. No spurious sheets far from surface, e.g., bottom, upper arm of cat)<br /> 2.Robust to outliers | 1.Robust to outliers <br />2.Better reconstruction of sharp features, e.g., the hat edge of Luigi |
 

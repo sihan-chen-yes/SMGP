@@ -604,24 +604,10 @@ void normalize() {
     N = N * eigenvectors;
     
     //scaling the point cloud according to diagonal
-    // RowVector3d p_min = P.colwise().minCoeff();
-    // RowVector3d p_max = P.colwise().maxCoeff();
-    // double bounding_box_diagonal = (p_max - p_min).norm();
-    // P = P / (bounding_box_diagonal);
-
-    // MatrixXd covariance2 = 1 / (n - 1.0) * P.transpose() * P;
-    
-
-    // SelfAdjointEigenSolver<MatrixXd> eigen2(covariance2);
-    // MatrixXd eigenvectors2 = eigen2.eigenvectors();
-    // VectorXd eigenvalues2 = eigen2.eigenvalues();
-    // VectorXd eigenvalues = eigen.eigenvalues();
-
-    // for(int i = 0; i < eigenvalues.rows(); i++)
-    // {
-    //     cout << eigenvalues[i] << endl;
-    //     cout << eigenvectors.col(i) << endl;
-    // }
+    RowVector3d p_min = P.colwise().minCoeff();
+    RowVector3d p_max = P.colwise().maxCoeff();
+    double bounding_box_diagonal = (p_max - p_min).norm();
+    P = P / (bounding_box_diagonal);
 }
 
 int main(int argc, char *argv[])
