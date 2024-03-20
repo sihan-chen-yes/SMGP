@@ -35,9 +35,9 @@ int polyDegree = 0;
 double wendlandRadius = 0.1;
 
 // Parameter: grid resolution
-int grid_resolution_X = 20;
-int grid_resolution_Y = 20;
-int grid_resolution_Z = 20;
+int grid_resolution_X = 50;
+int grid_resolution_Y = 50;
+int grid_resolution_Z = 50;
 
 double grid_expansion = 1.05;
 
@@ -197,21 +197,19 @@ double getImplicitFuncVal(const vector<int>& possible_point_index, const RowVect
 double getImplicitFuncVal_normal(const vector<int>& possible_point_index, const RowVector3d& point) {
     int n = possible_point_index.size();
     RowVectorXd weight(n);
-    MatrixXd valid_poly_values(n, poly_values.cols());
+    MatrixXd weight_col(n, 1);
     VectorXd vals(n);
     int cnt = 0;
     for (int i : possible_point_index) {
         RowVector3d neighbor_point = P.row(i);
-        weight[cnt] = getWendLandFuncVal(point, neighbor_point); 
-        valid_poly_values.row(cnt) = poly_values.row(i);
+        weight[cnt] = getWendLandFuncVal(point, neighbor_point);
+        weight_col.row(cnt) << weight[cnt];
         vals[cnt] = (point - neighbor_point) * N.row(i).transpose();
         cnt++; 
     }
     MatrixXd weightMat = weight.asDiagonal();
-    VectorXd c = (weightMat * valid_poly_values).bdcSvd(ComputeThinU | ComputeThinV).solve(weightMat * vals);
-    RowVectorXd poly_value = getPolyValue(point);
-    double implicit_func_val = poly_value * c;
-    return implicit_func_val;
+    VectorXd c = (weight_col).bdcSvd(ComputeThinU | ComputeThinV).solve(weightMat * vals);
+    return c[0];
 }
 
 double getWendLandFuncVal(const RowVector3d& point, const RowVector3d& constrained_point) {
@@ -250,17 +248,6 @@ void evaluateImplicitFunc_PolygonSoup()
 {
     // Replace with your code here, for "key == '5'"
     //only consider the original points P
-    //cal poly_values via degree
-    for(unsigned i = 0; i < P.rows(); ++i) {
-        RowVector3d point = P.row(i);
-        RowVectorXd poly_value = getPolyValue(point);
-        //initialization
-        if (i == 0) {
-            poly_values.resize(P.rows(), poly_value.cols());
-        }
-        poly_values.row(i) = poly_value;
-    }
-    
     // Scalar values of the grid points (the implicit function values)
     grid_values.resize(grid_resolution_X * grid_resolution_Y * grid_resolution_Z);
     UniformGrid uniform_grid(P, wendlandRadius);
