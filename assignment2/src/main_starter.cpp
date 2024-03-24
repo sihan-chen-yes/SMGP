@@ -35,11 +35,13 @@ int polyDegree = 0;
 double wendlandRadius = 0.1;
 
 // Parameter: grid resolution
-int grid_resolution_X = 50;
-int grid_resolution_Y = 50;
-int grid_resolution_Z = 50;
+int grid_resolution_X = 20;
+int grid_resolution_Y = 20;
+int grid_resolution_Z = 20;
 
 double grid_expansion = 1.05;
+
+int k = 50;
 
 // Intermediate result: grid points, at which the imlicit function will be evaluated, #G x3
 Eigen::MatrixXd grid_points;
@@ -80,6 +82,7 @@ double getImplicitFuncVal(const vector<int>& possible_point_index, const RowVect
 double getWendLandFuncVal(const RowVector3d& point, const RowVector3d& constrained_point);
 void normalize();
 MatrixXd getCovarianceMatrix(const MatrixXd& X);
+vector<int> getKNeighbors(RowVector3d& point, vector<int> possible_index);
 
 // Creates a grid_points array for the simple sphere example. The points are
 // stacked into a single matrix, ordered first in the x, then in the y and
@@ -314,30 +317,46 @@ void getLines()
 
 // Estimation of the normals via PCA.
 void pcaNormal()
-{   
+{
     UniformGrid uniform_grid(P, wendlandRadius);
     NP.resize(P.rows(), 3);
     //estimate normal for every point
     for(unsigned i = 0; i < P.rows(); ++i) {
         RowVector3d point = P.row(i);
-        vector<int> possible_point_index = uniform_grid.getNeighbors(point, wendlandRadius);
-        MatrixXd neighbors(possible_point_index.size(), 3);
+        vector<int> neighbors_index = getKNeighbors(point, uniform_grid.getNeighbors(point, wendlandRadius));
+        MatrixXd neighbors(neighbors_index.size(), 3);
         int cnt = 0;
-        for (auto i : possible_point_index) {
+        for (auto i : neighbors_index) {
             neighbors.row(cnt++) = P.row(i);
         }
         MatrixXd covariance = getCovarianceMatrix(neighbors);
         SelfAdjointEigenSolver<MatrixXd> eigen(covariance);
         MatrixXd eigenvectors = eigen.eigenvectors();
-        //vector with least lambda
+        VectorXd eigenvalues = eigen.eigenvalues();
+
+        //vector with least eigenvalue
         RowVector3d normal = eigenvectors.col(0);
         RowVector3d provided_normal = N.row(i);
+
         //judge orientation
         if (normal.dot(provided_normal) < 0) {
             normal = -normal;
         }
         NP.row(i) = normal;
     }
+}
+
+vector<int> getKNeighbors(RowVector3d& point, vector<int> possible_index) {
+    sort(possible_index.begin(), possible_index.end(), [&point](int a, int b) {
+        RowVector3d  pointA = P.row(a);
+        RowVector3d  pointB = P.row(b);
+        return (pointA - point).squaredNorm() < (pointB - point).squaredNorm();
+    });
+    vector<int> neighbors;
+    for (int i = 1; i < k + 1 && i < possible_index.size(); ++i) {
+        neighbors.push_back(possible_index[i]);
+    }
+    return neighbors;
 }
 
 MatrixXd getCovarianceMatrix(const MatrixXd& X) {
@@ -522,12 +541,15 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers)
 
     if (key == '6' || key == '7' || key == '8')
     {
-        // Implement PCA Normal Estimation --> Function to be modified here
-        pcaNormal();
+        Eigen::MatrixXd N_tmp;
+        if (key == '6'){
+            // Implement PCA Normal Estimation --> Function to be modified here
+            pcaNormal();
 
-        // To use the normals estimated via PCA instead of the input normals and then restaurate the input normals
-        Eigen::MatrixXd N_tmp = N;
-        N = NP;
+            // To use the normals estimated via PCA instead of the input normals and then restaurate the input normals
+            N_tmp = N;
+            N = NP;
+        }
 
         switch (key)
         {
@@ -545,8 +567,10 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers)
             break;
         }
 
-        // Restore input normals
-        N = N_tmp;
+        if (key == '6') {
+            // Restore input normals
+            N = N_tmp;
+        }
     }
 
     return true;
@@ -589,7 +613,7 @@ void normalize() {
     //rotate point cloud to align the axis
     P = P * eigenvectors;
     N = N * eigenvectors;
-    
+
     //scaling the point cloud according to diagonal
     RowVector3d p_min = P.colwise().minCoeff();
     RowVector3d p_max = P.colwise().maxCoeff();
@@ -645,6 +669,7 @@ int main(int argc, char *argv[])
             ImGui::InputInt("grid_resolution_X", &grid_resolution_X, 0, 0);
             ImGui::InputInt("grid_resolution_Y", &grid_resolution_Y, 0, 0);
             ImGui::InputInt("grid_resolution_Z", &grid_resolution_Z, 0, 0);
+            ImGui::InputInt("k", &k, 0, 0);
 
         }
     };
