@@ -6,10 +6,13 @@
 #include <igl/copyleft/marching_cubes.h>
 #include "viewer_proxy.h"
 #include "uniform_grid.h"
+#include <igl/knn.h>
+#include <igl/octree.h>
 
 using namespace std;
-
 using namespace Eigen;
+using namespace igl;
+
 
 using Viewer = ViewerProxy;
 
@@ -141,7 +144,7 @@ void createGrid()
 void evaluateImplicitFunc()
 {
     //cal poly_values via degree
-    for(unsigned i = 0; i < constrained_points.rows(); ++i) {
+    for (unsigned i = 0; i < constrained_points.rows(); ++i) {
         RowVector3d point = constrained_points.row(i);
         RowVectorXd poly_value = getPolyValue(point);
         //initialization
@@ -231,15 +234,15 @@ Eigen::RowVectorXd getPolyValue(const Eigen::RowVector3d& point) {
     VectorXd power_x(polyDegree + 1), power_y(polyDegree + 1), power_z(polyDegree + 1);
     power_x[0] = power_y[0] = power_z[0] = 1.0;
     
-    for(unsigned i = 1; i < polyDegree + 1; ++i) {
+    for (unsigned i = 1; i < polyDegree + 1; ++i) {
         power_x[i] = power_x[i - 1] * x;
         power_y[i] = power_y[i - 1] * y;
         power_z[i] = power_z[i - 1] * z;
     }
     
-    for(unsigned i = 0; i < polyDegree + 1; ++i) {
-        for(unsigned j = 0; i + j < polyDegree + 1; ++j) {
-            for(unsigned k = 0; i + j + k < polyDegree + 1; ++k) {
+    for (unsigned i = 0; i < polyDegree + 1; ++i) {
+        for (unsigned j = 0; i + j < polyDegree + 1; ++j) {
+            for (unsigned k = 0; i + j + k < polyDegree + 1; ++k) {
                 poly_value[loc++] = power_x[i] * power_y[j] * power_z[k];
             }
         }
@@ -318,21 +321,29 @@ void getLines()
 // Estimation of the normals via PCA.
 void pcaNormal()
 {
-    UniformGrid uniform_grid(P, wendlandRadius);
     NP.resize(P.rows(), 3);
+
+    //building octree
+    vector<vector<int>> O_PI;
+    MatrixXi O_CH;
+    MatrixXd O_CN;
+    VectorXd O_W;
+    octree(P, O_PI, O_CH, O_CN, O_W);
+
+    MatrixXi I;
+    knn(P, k, O_PI, O_CH, O_CN, O_W, I);
     //estimate normal for every point
-    for(unsigned i = 0; i < P.rows(); ++i) {
-        RowVector3d point = P.row(i);
-        vector<int> neighbors_index = getKNeighbors(point, uniform_grid.getNeighbors(point, wendlandRadius));
+    for (int i = 0; i < I.rows(); ++i) {
+        RowVectorXi neighbors_index = I.row(i);
         MatrixXd neighbors(neighbors_index.size(), 3);
-        int cnt = 0;
-        for (auto i : neighbors_index) {
-            neighbors.row(cnt++) = P.row(i);
+
+        for (int j = 0; j < neighbors_index.size(); ++j) {
+            neighbors.row(j) = P.row(neighbors_index[j]);
         }
+
         MatrixXd covariance = getCovarianceMatrix(neighbors);
         SelfAdjointEigenSolver<MatrixXd> eigen(covariance);
         MatrixXd eigenvectors = eigen.eigenvectors();
-        VectorXd eigenvalues = eigen.eigenvalues();
 
         //vector with least eigenvalue
         RowVector3d normal = eigenvectors.col(0);
@@ -340,23 +351,10 @@ void pcaNormal()
 
         //judge orientation
         if (normal.dot(provided_normal) < 0) {
-            normal = -normal;
+            normal *= -1;
         }
         NP.row(i) = normal;
     }
-}
-
-vector<int> getKNeighbors(RowVector3d& point, vector<int> possible_index) {
-    sort(possible_index.begin(), possible_index.end(), [&point](int a, int b) {
-        RowVector3d  pointA = P.row(a);
-        RowVector3d  pointB = P.row(b);
-        return (pointA - point).squaredNorm() < (pointB - point).squaredNorm();
-    });
-    vector<int> neighbors;
-    for (int i = 1; i < k + 1 && i < possible_index.size(); ++i) {
-        neighbors.push_back(possible_index[i]);
-    }
-    return neighbors;
 }
 
 MatrixXd getCovarianceMatrix(const MatrixXd& X) {
@@ -389,7 +387,7 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers)
         constrained_points.resize(3 * n, 3);
         constrained_values.resize(3 * n, 1);
 
-        for(unsigned i = 0; i < P.rows(); ++i) {
+        for (unsigned i = 0; i < P.rows(); ++i) {
             constrained_points.row(i) = P.row(i);
             constrained_values.row(i) << 0;
         }
