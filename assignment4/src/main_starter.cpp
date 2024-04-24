@@ -6,6 +6,16 @@
 #include "viewer_proxy.h"
 
 /*** insert any necessary libigl headers here ***/
+#include <igl/boundary_loop.h>
+#include <igl/map_vertices_to_circle.h>
+#include <igl/dijkstra.h>
+#include <igl/adjacency_list.h>
+#include <igl/adjacency_matrix.h>
+#include <igl/cotmatrix.h>
+#include <igl/sum.h>
+#include <igl/diag.h>
+#include <igl/cat.h>
+#include <igl/doublearea.h>
 
 using namespace std;
 using namespace Eigen;
@@ -23,9 +33,17 @@ Eigen::MatrixXi F;
 // UV coordinates, #V x2
 Eigen::MatrixXd UV;
 const char *constraints[] = {"fixed boundary", "2 verts", "DOF"};
-enum { UNIT_DISK_BOUNDARY, TWO_VERTICES_POSITIONS, NECESSARY_DOF };
+const char *distortion[] = {"Angle", "Length", "Area"};
+enum {UNIT_DISK_BOUNDARY, TWO_VERTICES_POSITIONS, NECESSARY_DOF};
+enum {ANGLE, LENGTH, AREA};
 int selected_constraint = 0;
+int selected_distortion = 0;
 float TextureResolution = 10;
+SparseMatrix<double> getAreaMatrix();
+vector<int> pickTwoPoints();
+void computeDistortion();
+MatrixXd color;
+bool calculateDistortion = false;
 
 void Redraw(ViewerProxy& viewer) {
   // Update the mesh in the viewer.
@@ -40,6 +58,11 @@ void Redraw(ViewerProxy& viewer) {
     mesh_data.show_texture = true;
     uv_mesh_data.set_mesh(UV, F);
     CORE_2D.align_camera_center(UV);
+  }
+  if (calculateDistortion) {
+    mesh_data.set_colors(color);
+    uv_mesh_data.set_colors(color);
+    calculateDistortion = false;
   }
 }
 
@@ -60,6 +83,7 @@ static void computeSurfaceGradientMatrix(SparseMatrix<double> &D1,
   D2 = F2.col(0).asDiagonal() * Dx + F2.col(1).asDiagonal() * Dy +
        F2.col(2).asDiagonal() * Dz;
 }
+
 static inline void SSVD2x2(const Eigen::Matrix2d &J, Eigen::Matrix2d &U,
                            Eigen::Matrix2d &S, Eigen::Matrix2d &V) {
   double e = (J(0) + J(3)) * 0.5;
@@ -101,6 +125,31 @@ void ConvertConstraintsToMatrixForm(const VectorXi &indices,
   // system.
   // Hint: The matrix C should contain only one non-zero element per row
   // and d should contain the positions in the correct order.
+    vector<Triplet<double>> triplets;
+    if (selected_constraint != NECESSARY_DOF) {
+        int num_constraints = positions.rows();
+        d.resize(num_constraints * 2);
+        C.resize(num_constraints * 2, V.rows() * 2);
+        triplets.reserve(num_constraints * 2);
+        for (int i = 0; i < num_constraints; ++i) {
+            d[i] = positions(i, 0);
+            d[i + num_constraints] = positions(i, 1);
+            triplets.emplace_back(i, indices[i], 1);
+            triplets.emplace_back(i + num_constraints, indices[i] + V.rows(), 1);
+        }
+    } else {
+        //only using two D.O.F as constraints
+        // u1 u2 of two vertexes
+        d.resize(2);
+        C.resize(2, V.rows() * 2);
+        triplets.reserve(2);
+        // U coordinate
+        d[0] = positions(0, 0);
+        d[1] = positions(1, 0);
+        triplets.emplace_back(0, indices[0], 1);
+        triplets.emplace_back(1, indices[1], 1);
+    }
+    C.setFromTriplets(triplets.begin(), triplets.end());
 }
 
 void computeParameterization(int type) {
@@ -114,19 +163,32 @@ void computeParameterization(int type) {
   // Find the indices of the boundary vertices of the mesh and put them in
   // fixed_UV_indices
   switch (selected_constraint) {
-  case UNIT_DISK_BOUNDARY:
-    // The boundary vertices should be fixed to positions on the unit disc. Find
-    // these position and save them in the #V x 2 matrix fixed_UV_position.
-    break;
-  case TWO_VERTICES_POSITIONS:
-    // Fix two UV vertices. This should be done in an intelligent way.
-    // Hint: The two fixed vertices should be the two most distant one on the
-    // mesh.
-    break;
-  case NECESSARY_DOF:
-    // Add constraints for fixing only the necessary degrees of freedom for the
-    // parameterization, avoiding an unnecessarily over-constrained system.
-    break;
+      case UNIT_DISK_BOUNDARY: {
+          // The boundary vertices should be fixed to positions on the unit disc. Find
+          // these position and save them in the #V x 2 matrix fixed_UV_position.
+          igl::boundary_loop(F, fixed_UV_indices);
+          igl::map_vertices_to_circle(V, fixed_UV_indices, fixed_UV_positions);
+          break;
+      }
+
+      case TWO_VERTICES_POSITIONS: {
+          // Fix two UV vertices. This should be done in an intelligent way.
+          // Hint: The two fixed vertices should be the two most distant one on the
+          // mesh.
+      }
+
+      case NECESSARY_DOF: {
+          // Add constraints for fixing only the necessary degrees of freedom for the
+          // parameterization, avoiding an unnecessarily over-constrained system.x
+          vector<int> indices = pickTwoPoints();
+          fixed_UV_indices.resize(2);
+          fixed_UV_indices << indices[0], indices[1];
+          fixed_UV_positions.resize(2, 2);
+          //set the UV coordinate randomly
+          fixed_UV_positions << -1, 0,
+                                 1, 0;
+          break;
+      }
   }
 
   ConvertConstraintsToMatrixForm(fixed_UV_indices, fixed_UV_positions, C, d);
@@ -134,27 +196,139 @@ void computeParameterization(int type) {
   // Find the linear system for the parameterization (1- Tutte, 2- Harmonic, 3-
   // LSCM, 4- ARAP) and put it in the matrix A. The dimensions of A should be
   // 2#V x 2#V.
+  int nv = V.rows();
+  int N = C.rows() / 2;
+  int nf = F.rows();
+
   if (type == '1') {
     // Add your code for computing uniform Laplacian for Tutte parameterization
     // Hint: use the adjacency matrix of the mesh
+    Eigen::SparseMatrix<double> Adj, Lu, D;
+    Eigen::SparseVector<double> Degree;
+    igl::adjacency_matrix(F, Adj);
+    // calculate the degree matrix
+    igl::sum(Adj, 1, Degree);
+    igl::diag(Degree, D);
+    Lu = Adj - D;
+
+    //build A.TA
+    A.resize(2 * nv, 2 * nv);
+    vector<Triplet<double>> triplets;
+    for (int i = 0; i < Lu.outerSize(); ++i) {
+        for (SparseMatrix<double>::InnerIterator it(Lu, i); it; ++it) {
+            triplets.emplace_back(it.row(), it.col(), it.value());
+            triplets.emplace_back(it.row() + nv, it.col() + nv, it.value());
+        }
+    }
+    A.setFromTriplets(triplets.begin(), triplets.end());
+    //A.Tb = 0
+    b.setZero(2 * nv);
   }
 
   if (type == '2') {
     // Add your code for computing cotangent Laplacian for Harmonic
     // parameterization Use can use a function "cotmatrix" from libIGL, but
     // ~~~~***READ THE DOCUMENTATION***~~~~
+    Eigen::SparseMatrix<double> Lc;
+    igl::cotmatrix(V, F, Lc);
+
+    //build A.TA
+    A.resize(2 * nv, 2 * nv);
+    vector<Triplet<double>> triplets;
+    for (int i = 0; i < Lc.outerSize(); ++i) {
+        for (SparseMatrix<double>::InnerIterator it(Lc, i); it; ++it) {
+            triplets.emplace_back(it.row(), it.col(), it.value());
+            triplets.emplace_back(it.row() + nv, it.col() + nv, it.value());
+        }
+    }
+    A.setFromTriplets(triplets.begin(), triplets.end());
+    //A.Tb = 0
+    b.setZero(2 * nv);
   }
 
   if (type == '3') {
     // Add your code for computing the system for LSCM parameterization
     // Note that the libIGL implementation is different than what taught in the
     // tutorial! Do not rely on it!!
+    //building triangle area matrix**0.5
+    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
+    areaMatrix = getAreaMatrix();
+    SparseMatrix<double> localDx, localDy, negLocalDx, negLocalDy;
+    //calculate gradient operator along local triangle coordinate axis
+    computeSurfaceGradientMatrix(localDx, localDy);
+    negLocalDx = -localDx;
+    negLocalDy = -localDy;
+    SparseMatrix<double> D1, D2, D3, D4, upD, downD, D;
+    igl::cat(2, localDx, negLocalDy, D1);
+    igl::cat(2, localDy, localDx, D2);
+    igl::cat(2, localDy, localDx, D3);
+    igl::cat(2, negLocalDx, localDy, D4);
+    igl::cat(1, D1, D2, upD);
+    igl::cat(1, D3, D4, downD);
+    igl::cat(1, upD, downD, D);
+    SparseMatrix<double> AD;
+    AD = areaMatrix * D;
+    //A 2nv x 2nv
+    A = AD.transpose() * AD;
+    b.setZero(2 * nv);
   }
 
   if (type == '4') {
     // Add your code for computing ARAP system and right-hand side
     // Implement a function that computes the local step first
     // Then construct the matrix with the given rotation matrices
+    //check UV and initiate
+    if (UV.rows() == 0) {
+        computeParameterization('3');
+    }
+    //building triangle area matrix**0.5
+    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
+    areaMatrix = getAreaMatrix();
+    SparseMatrix<double> localDx, localDy;
+    //calculate gradient operator along local triangle coordinate axis nf * nv
+    computeSurfaceGradientMatrix(localDx, localDy);
+    SparseMatrix<double> R(4 * nf, 1);
+    vector<Triplet<double>> triplets;
+    //calculate Jacobian for every face
+    VectorXd U = UV.col(0);
+    VectorXd V = UV.col(1);
+    //nf * 1
+    VectorXd J11 = localDx * U;
+    VectorXd J12 = localDy * U;
+    VectorXd J21 = localDx * V;
+    VectorXd J22 = localDy * V;
+    for (int i = 0; i < nf; ++i) {
+        Matrix2d J, U, S, V, tmpS, VT, Ri;
+        J.resize(2, 2);
+        J << J11(i), J12(i), J21(i), J22(i);
+        SSVD2x2(J, U, S, V);
+        VT = V.transpose();
+        double s = (U * VT).determinant();
+        tmpS.resize(2, 2);
+        tmpS << 1, 0, 0, s;
+        Ri = U * tmpS * VT;
+        triplets.emplace_back(i, 0, Ri(0, 0));
+        triplets.emplace_back(i + nf, 0, Ri(0, 1));
+        triplets.emplace_back(i + 2 * nf, 0, Ri(1, 0));
+        triplets.emplace_back(i + 3 * nf, 0, Ri(1, 1));
+    }
+    R.setFromTriplets(triplets.begin(), triplets.end());
+    SparseMatrix<double> D1, D2, D3, D4, upD, downD, D, zeroMatrix;
+    zeroMatrix.resize(nf, nv);
+    zeroMatrix.setZero();
+    igl::cat(2, localDx, zeroMatrix, D1);
+    igl::cat(2, localDy, zeroMatrix, D2);
+    igl::cat(2, zeroMatrix, localDx, D3);
+    igl::cat(2, zeroMatrix, localDy, D4);
+    igl::cat(1, D1, D2, upD);
+    igl::cat(1, D3, D4, downD);
+    igl::cat(1, upD, downD, D);
+    SparseMatrix<double> AD;
+    //AD 4nf x 2nv
+    AD = areaMatrix * D;
+    //A 2nv x 2nv
+    A = AD.transpose() * AD;
+    b = AD.transpose() * R;
   }
 
   // Solve the linear system.
@@ -163,9 +337,42 @@ void computeParameterization(int type) {
   // Use Eigen::SparseLU to solve the system. Refer to tutorial 4 for more
   // details.
 
+  SparseMatrix<double> upMatrix, downMatrix, zeroMatrix, lhs, CT;
+  zeroMatrix.resize(2 * N, 2 * N);
+  zeroMatrix.setZero();
+  //A means A.TA
+  CT = C.transpose();
+  igl::cat(2, A, CT, upMatrix);
+  igl::cat(2, C, zeroMatrix, downMatrix);
+  igl::cat(1, upMatrix, downMatrix, lhs);
+  VectorXd rhs;
+  rhs.resize(2 * nv + 2 * N);
+  //b means A.Tb
+  rhs << b, d;
+
+  //solver
+  SparseLU<SparseMatrix<double>> solver;
+  solver.analyzePattern(lhs);
+  solver.factorize(lhs);
+  if (solver.info() != Eigen::Success) {
+      std::cerr << "Factorization failed: " << solver.lastErrorMessage() << std::endl;
+      return;
+  }
+
+  VectorXd X = solver.solve(rhs);
+
+  if (solver.info() != Eigen::Success) {
+      // Handle the error, solving failed
+      std::cerr << "Solving failed." << std::endl;
+      return;
+  }
+
   // Copy the solution to UV.
-  // UV.col(0) =
-  // UV.col(1) =
+  UV.resize(nv, 2);
+  //U
+  UV.col(0) = X.block(0, 0, nv, 1);
+  //V
+  UV.col(1) = X.block(nv, 0, nv, 1);
 }
 
 bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
@@ -181,6 +388,9 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
     break;
   case '-':
     TextureResolution *= 2;
+    break;
+  case 'D':
+    computeDistortion();
     break;
   }
   Redraw(viewer);
@@ -229,6 +439,8 @@ int main(int argc, char *argv[]) {
                                 ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Combo("Constraints", &selected_constraint, constraints,
                    IM_ARRAYSIZE(constraints));
+      ImGui::Combo("Distortion", &selected_distortion, distortion,
+                     IM_ARRAYSIZE(distortion));
       if (ImGui::SliderFloat("scale", &TextureResolution, 0, 40)) {
         Redraw(viewer);
       }
@@ -246,4 +458,126 @@ int main(int argc, char *argv[]) {
   };
 
   viewer.launch();
+}
+
+SparseMatrix<double> getAreaMatrix() {
+    int nf = F.rows();
+    VectorXd area;
+    igl::doublearea(V, F, area);
+    vector<Triplet<double>> triplets;
+    //building triangle area matrix
+    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
+    for (int i = 0; i < area.size(); ++i) {
+        double value = sqrt(area(i));
+        triplets.emplace_back(i, i, value);
+        triplets.emplace_back(i + nf, i + nf, value);
+        triplets.emplace_back(i + 2 * nf, i + 2 * nf, value);
+        triplets.emplace_back(i + 3 * nf, i + 3 * nf, value);
+    }
+    areaMatrix.setFromTriplets(triplets.begin(), triplets.end());
+    return areaMatrix;
+}
+
+void computeDistortion() {
+    //set flag
+    calculateDistortion = true;
+//    VectorXd areas;
+//    igl::doublearea(UV, F, areas);
+//    UV /= sqrt(areas.sum() / 2);
+    //calculate Jacobian for each face
+    int nf = F.rows();
+    color.resize(nf, 3);
+
+    //building triangle area matrix**0.5
+    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
+    areaMatrix = getAreaMatrix();
+    SparseMatrix<double> localDx, localDy;
+    //calculate gradient operator along local triangle coordinate axis nf * nv
+    computeSurfaceGradientMatrix(localDx, localDy);
+    SparseMatrix<double> R(4 * nf, 1);
+    vector<Triplet<double>> triplets;
+    //calculate Jacobian for every face
+    VectorXd U = UV.col(0);
+    VectorXd V = UV.col(1);
+    //nf * 1
+    VectorXd J11 = localDx * U;
+    VectorXd J12 = localDy * U;
+    VectorXd J21 = localDx * V;
+    VectorXd J22 = localDy * V;
+    VectorXd distortionValues(nf);
+    switch (selected_distortion) {
+        case ANGLE:
+            for (int i = 0; i < nf; ++i) {
+                Matrix2d J, I;
+                J.resize(2, 2);
+                J << J11(i), J12(i), J21(i), J22(i);
+                I.resize(2, 2);
+                I.setIdentity();
+                distortionValues(i) = (J + J.transpose() - J.trace() * I).norm();
+            }
+            break;
+        case LENGTH:
+            for (int i = 0; i < nf; ++i) {
+                Matrix2d J, U, S, V, tmpS, VT, Ri;
+                J.resize(2, 2);
+                J << J11(i), J12(i), J21(i), J22(i);
+                SSVD2x2(J, U, S, V);
+                VT = V.transpose();
+                double s = (U * VT).determinant();
+                tmpS.resize(2, 2);
+                tmpS << 1, 0, 0, s;
+                Ri = U * tmpS * VT;
+                distortionValues(i) = (J - Ri).norm();
+            }
+            break;
+        case AREA:
+            for (int i = 0; i < nf; ++i) {
+                Matrix2d J;
+                J.resize(2, 2);
+                J << J11(i), J12(i), J21(i), J22(i);
+                distortionValues(i) = pow(J.determinant() - 1, 2);
+            }
+            break;
+    }
+    //normalizing
+    double min_distortion = distortionValues.minCoeff();
+    double max_distortion = distortionValues.maxCoeff();
+    distortionValues = (distortionValues.array() - min_distortion) / (max_distortion - min_distortion);
+    //from white (1, 1, 1) to red(1, 0, 0)
+    VectorXd ones(nf, 1);
+    ones.setOnes();
+    color.col(0) = ones;
+    color.col(1) = ones - distortionValues;
+    color.col(2) = ones - distortionValues;
+}
+
+vector<int> pickTwoPoints() {
+    double max_dist = 0;
+    //source and target index
+    int v1 = 0, v2 = 0;
+    //to store the min_dist from the source to target vertex
+    VectorXd min_dist;
+    //store the previous vertex indices
+    VectorXi prev;
+    //store the target vertex indeces
+    set<int> tar;
+    //adjacent vertex
+    vector<vector<int>> VV;
+    igl::adjacency_list(F, VV);
+
+    for (int i = 0; i < V.rows(); ++i) {
+        igl::dijkstra(i, tar, VV, min_dist, prev);
+        //find the maximum in the min_dist
+        for (int j = 0; j < min_dist.size(); ++j) {
+            if (min_dist[j] > max_dist) {
+                max_dist = min_dist[j];
+                v1 = i;
+                v2 = j;
+            }
+        }
+    }
+    vector<int> res;
+    res.push_back(v1);
+    res.push_back(v2);
+    return  res;
 }
