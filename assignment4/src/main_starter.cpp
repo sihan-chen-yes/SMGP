@@ -250,26 +250,22 @@ void computeParameterization(int type) {
     // Add your code for computing the system for LSCM parameterization
     // Note that the libIGL implementation is different than what taught in the
     // tutorial! Do not rely on it!!
-    //building triangle area matrix**0.5
-    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
+    //building triangle area matrix
+    SparseMatrix<double> areaMatrix(nf, nf);
     areaMatrix = getAreaMatrix();
-    SparseMatrix<double> localDx, localDy, negLocalDx, negLocalDy;
+    SparseMatrix<double> Dx, Dy, DxT, DyT;
     //calculate gradient operator along local triangle coordinate axis
-    computeSurfaceGradientMatrix(localDx, localDy);
-    negLocalDx = -localDx;
-    negLocalDy = -localDy;
-    SparseMatrix<double> D1, D2, D3, D4, upD, downD, D;
-    igl::cat(2, localDx, negLocalDy, D1);
-    igl::cat(2, localDy, localDx, D2);
-    igl::cat(2, localDy, localDx, D3);
-    igl::cat(2, negLocalDx, localDy, D4);
-    igl::cat(1, D1, D2, upD);
-    igl::cat(1, D3, D4, downD);
-    igl::cat(1, upD, downD, D);
-    SparseMatrix<double> AD;
-    AD = areaMatrix * D;
-    //A 2nv x 2nv
-    A = AD.transpose() * AD;
+    computeSurfaceGradientMatrix(Dx, Dy);
+    DxT = Dx.transpose();
+    DyT = Dy.transpose();
+    SparseMatrix<double> A11, A12, A21, A22, upA, downA;
+    A11 = 2 * DxT * areaMatrix * Dx + 2 * DyT * areaMatrix * Dy;
+    A12 = -2 * DxT * areaMatrix * Dy + 2 * DyT * areaMatrix * Dx;
+    A21 = -2 * DyT * areaMatrix * Dx + 2 * DxT * areaMatrix * Dy;
+    A22 = 2 * DyT * areaMatrix * Dy + 2 * DxT * areaMatrix * Dx;
+    igl::cat(2, A11, A12, upA);
+    igl::cat(2, A21, A22, downA);
+    igl::cat(1, upA, downA, A);
     b.setZero(2 * nv);
   }
 
@@ -281,22 +277,25 @@ void computeParameterization(int type) {
     if (UV.rows() == 0) {
         computeParameterization('3');
     }
-    //building triangle area matrix**0.5
-    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
+    //building triangle area matrix
+    SparseMatrix<double> areaMatrix(nf, nf);
     areaMatrix = getAreaMatrix();
-    SparseMatrix<double> localDx, localDy;
+    SparseMatrix<double> Dx, Dy, DxT, DyT;
     //calculate gradient operator along local triangle coordinate axis nf * nv
-    computeSurfaceGradientMatrix(localDx, localDy);
+    computeSurfaceGradientMatrix(Dx, Dy);
+    DxT = Dx.transpose();
+    DyT = Dy.transpose();
     SparseMatrix<double> R(4 * nf, 1);
     vector<Triplet<double>> triplets;
+    triplets.reserve(4 * nf);
     //calculate Jacobian for every face
     VectorXd U = UV.col(0);
     VectorXd V = UV.col(1);
     //nf * 1
-    VectorXd J11 = localDx * U;
-    VectorXd J12 = localDy * U;
-    VectorXd J21 = localDx * V;
-    VectorXd J22 = localDy * V;
+    VectorXd J11 = Dx * U;
+    VectorXd J12 = Dy * U;
+    VectorXd J21 = Dx * V;
+    VectorXd J22 = Dy * V;
     for (int i = 0; i < nf; ++i) {
         Matrix2d J, U, S, V, tmpS, VT, Ri;
         J.resize(2, 2);
@@ -313,22 +312,22 @@ void computeParameterization(int type) {
         triplets.emplace_back(i + 3 * nf, 0, Ri(1, 1));
     }
     R.setFromTriplets(triplets.begin(), triplets.end());
-    SparseMatrix<double> D1, D2, D3, D4, upD, downD, D, zeroMatrix;
-    zeroMatrix.resize(nf, nv);
+    SparseMatrix<double> A11, A22, upA, downA, zeroMatrix;
+    zeroMatrix.resize(nv, nv);
     zeroMatrix.setZero();
-    igl::cat(2, localDx, zeroMatrix, D1);
-    igl::cat(2, localDy, zeroMatrix, D2);
-    igl::cat(2, zeroMatrix, localDx, D3);
-    igl::cat(2, zeroMatrix, localDy, D4);
-    igl::cat(1, D1, D2, upD);
-    igl::cat(1, D3, D4, downD);
-    igl::cat(1, upD, downD, D);
-    SparseMatrix<double> AD;
-    //AD 4nf x 2nv
-    AD = areaMatrix * D;
-    //A 2nv x 2nv
-    A = AD.transpose() * AD;
-    b = AD.transpose() * R;
+    A11 = DxT * areaMatrix * Dx + DyT * areaMatrix * Dy;
+    A22 = DxT * areaMatrix * Dx + DyT * areaMatrix * Dy;
+    igl::cat(2, A11, zeroMatrix, upA);
+    igl::cat(2, zeroMatrix, A22, downA);
+    igl::cat(1, upA, downA, A);
+    VectorXd upb, downb, R11, R12, R21, R22;
+    R11 = R.block(0, 0, nf, 1);
+    R12 = R.block(nf, 0, nf, 1);
+    R21 = R.block(2 * nf, 0, nf, 1);
+    R22 = R.block(3 * nf, 0, nf, 1);
+    upb = DxT * areaMatrix * R11 + DyT * areaMatrix * R12;
+    downb = DxT * areaMatrix * R21 + DyT * areaMatrix * R22;
+    igl::cat(1, upb, downb, b);
   }
 
   // Solve the linear system.
@@ -466,13 +465,10 @@ SparseMatrix<double> getAreaMatrix() {
     igl::doublearea(V, F, area);
     vector<Triplet<double>> triplets;
     //building triangle area matrix
-    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
+    SparseMatrix<double> areaMatrix(nf, nf);
     for (int i = 0; i < area.size(); ++i) {
-        double value = sqrt(area(i));
+        double value = area(i);
         triplets.emplace_back(i, i, value);
-        triplets.emplace_back(i + nf, i + nf, value);
-        triplets.emplace_back(i + 2 * nf, i + 2 * nf, value);
-        triplets.emplace_back(i + 3 * nf, i + 3 * nf, value);
     }
     areaMatrix.setFromTriplets(triplets.begin(), triplets.end());
     return areaMatrix;
@@ -488,22 +484,19 @@ void computeDistortion() {
     int nf = F.rows();
     color.resize(nf, 3);
 
-    //building triangle area matrix**0.5
-    SparseMatrix<double> areaMatrix(4 * nf, 4 * nf);
-    areaMatrix = getAreaMatrix();
-    SparseMatrix<double> localDx, localDy;
+    SparseMatrix<double> Dx, Dy;
     //calculate gradient operator along local triangle coordinate axis nf * nv
-    computeSurfaceGradientMatrix(localDx, localDy);
+    computeSurfaceGradientMatrix(Dx, Dy);
     SparseMatrix<double> R(4 * nf, 1);
     vector<Triplet<double>> triplets;
     //calculate Jacobian for every face
     VectorXd U = UV.col(0);
     VectorXd V = UV.col(1);
     //nf * 1
-    VectorXd J11 = localDx * U;
-    VectorXd J12 = localDy * U;
-    VectorXd J21 = localDx * V;
-    VectorXd J22 = localDy * V;
+    VectorXd J11 = Dx * U;
+    VectorXd J12 = Dy * U;
+    VectorXd J21 = Dx * V;
+    VectorXd J22 = Dy * V;
     VectorXd distortionValues(nf);
     switch (selected_distortion) {
         case ANGLE:
@@ -513,7 +506,7 @@ void computeDistortion() {
                 J << J11(i), J12(i), J21(i), J22(i);
                 I.resize(2, 2);
                 I.setIdentity();
-                distortionValues(i) = (J + J.transpose() - J.trace() * I).norm();
+                distortionValues(i) = (J + J.transpose() - J.trace() * I).squaredNorm();
             }
             break;
         case LENGTH:
@@ -527,7 +520,7 @@ void computeDistortion() {
                 tmpS.resize(2, 2);
                 tmpS << 1, 0, 0, s;
                 Ri = U * tmpS * VT;
-                distortionValues(i) = (J - Ri).norm();
+                distortionValues(i) = (J - Ri).squaredNorm();
             }
             break;
         case AREA:
@@ -544,7 +537,7 @@ void computeDistortion() {
     double max_distortion = distortionValues.maxCoeff();
     distortionValues = (distortionValues.array() - min_distortion) / (max_distortion - min_distortion);
     //from white (1, 1, 1) to red(1, 0, 0)
-    VectorXd ones(nf, 1);
+    VectorXd ones(nf);
     ones.setOnes();
     color.col(0) = ones;
     color.col(1) = ones - distortionValues;
