@@ -558,15 +558,13 @@ vector<int> pickTwoPoints() {
     vector<vector<int>> VV;
     igl::adjacency_list(F, VV);
 
-    for (int i = 0; i < V.rows(); ++i) {
-        igl::dijkstra(i, tar, VV, min_dist, prev);
-        //find the maximum in the min_dist
-        for (int j = 0; j < min_dist.size(); ++j) {
-            if (min_dist[j] > max_dist) {
-                max_dist = min_dist[j];
-                v1 = i;
-                v2 = j;
-            }
+    //randomly pick the first point index
+    igl::dijkstra(v1, tar, VV, min_dist, prev);
+    //find the maximum in the min_dist
+    for (int j = 0; j < min_dist.size(); ++j) {
+        if (min_dist[j] > max_dist) {
+            max_dist = min_dist[j];
+            v2 = j;
         }
     }
     vector<int> res;
