@@ -34,10 +34,14 @@ Eigen::MatrixXi F;
 Eigen::MatrixXd UV;
 const char *constraints[] = {"fixed boundary", "2 verts", "DOF"};
 const char *distortion[] = {"Angle", "Length", "Area"};
+const char *pick_method[] = {"RandomPick", "ConsiderBoundary", "ConsiderAll"};
+
 enum {UNIT_DISK_BOUNDARY, TWO_VERTICES_POSITIONS, NECESSARY_DOF};
 enum {ANGLE, LENGTH, AREA};
+enum {RANDOMPICK, CONSIDERBOUNDARY, CONSIDERALL};
 int selected_constraint = 0;
 int selected_distortion = 0;
+int selected_pick_method = 0;
 float TextureResolution = 10;
 SparseMatrix<double> getAreaMatrix();
 vector<int> pickTwoPoints();
@@ -440,6 +444,8 @@ int main(int argc, char *argv[]) {
                    IM_ARRAYSIZE(constraints));
       ImGui::Combo("Distortion", &selected_distortion, distortion,
                      IM_ARRAYSIZE(distortion));
+        ImGui::Combo("PickMethod", &selected_pick_method, pick_method,
+                     IM_ARRAYSIZE(pick_method));
       if (ImGui::SliderFloat("scale", &TextureResolution, 0, 40)) {
         Redraw(viewer);
       }
@@ -477,9 +483,6 @@ SparseMatrix<double> getAreaMatrix() {
 void computeDistortion() {
     //set flag
     calculateDistortion = true;
-//    VectorXd areas;
-//    igl::doublearea(UV, F, areas);
-//    UV /= sqrt(areas.sum() / 2);
     //calculate Jacobian for each face
     int nf = F.rows();
     color.resize(nf, 3);
@@ -499,7 +502,7 @@ void computeDistortion() {
     VectorXd J22 = Dy * V;
     VectorXd distortionValues(nf);
     switch (selected_distortion) {
-        case ANGLE:
+        case ANGLE: {
             for (int i = 0; i < nf; ++i) {
                 Matrix2d J, I;
                 J.resize(2, 2);
@@ -509,7 +512,8 @@ void computeDistortion() {
                 distortionValues(i) = (J + J.transpose() - J.trace() * I).squaredNorm();
             }
             break;
-        case LENGTH:
+        }
+        case LENGTH: {
             for (int i = 0; i < nf; ++i) {
                 Matrix2d J, U, S, V, tmpS, VT, Ri;
                 J.resize(2, 2);
@@ -523,7 +527,8 @@ void computeDistortion() {
                 distortionValues(i) = (J - Ri).squaredNorm();
             }
             break;
-        case AREA:
+        }
+        case AREA: {
             for (int i = 0; i < nf; ++i) {
                 Matrix2d J;
                 J.resize(2, 2);
@@ -531,6 +536,7 @@ void computeDistortion() {
                 distortionValues(i) = pow(J.determinant() - 1, 2);
             }
             break;
+        }
     }
     //normalizing
     double min_distortion = distortionValues.minCoeff();
@@ -558,13 +564,47 @@ vector<int> pickTwoPoints() {
     vector<vector<int>> VV;
     igl::adjacency_list(F, VV);
 
-    //randomly pick the first point index
-    igl::dijkstra(v1, tar, VV, min_dist, prev);
-    //find the maximum in the min_dist
-    for (int j = 0; j < min_dist.size(); ++j) {
-        if (min_dist[j] > max_dist) {
-            max_dist = min_dist[j];
-            v2 = j;
+    switch (selected_pick_method) {
+        case RANDOMPICK: {
+            igl::dijkstra(v1, tar, VV, min_dist, prev);
+            for (int j = 0; j < min_dist.size(); ++j) {
+                if (min_dist[j] > max_dist) {
+                    max_dist = min_dist[j];
+                    v2 = j;
+                }
+            }
+            break;
+        }
+        case CONSIDERBOUNDARY: {
+            VectorXi boundary_indices;
+            igl::boundary_loop(F, boundary_indices);
+
+            for (int i = 0; i < boundary_indices.size(); ++i) {
+                igl::dijkstra(i, tar, VV, min_dist, prev);
+                //find the maximum in the min_dist
+                for (int j = 0; j < min_dist.size(); ++j) {
+                    if (min_dist[j] > max_dist) {
+                        max_dist = min_dist[j];
+                        v1 = i;
+                        v2 = j;
+                    }
+                }
+            }
+            break;
+        }
+        case CONSIDERALL: {
+            for (int i = 0; i < V.rows(); ++i) {
+                igl::dijkstra(i, tar, VV, min_dist, prev);
+                //find the maximum in the min_dist
+                for (int j = 0; j < min_dist.size(); ++j) {
+                    if (min_dist[j] > max_dist) {
+                        max_dist = min_dist[j];
+                        v1 = i;
+                        v2 = j;
+                    }
+                }
+            }
+            break;
         }
     }
     vector<int> res;
