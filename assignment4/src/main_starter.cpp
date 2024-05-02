@@ -64,9 +64,10 @@ void Redraw(ViewerProxy& viewer) {
     CORE_2D.align_camera_center(UV);
   }
   if (calculateDistortion) {
-    mesh_data.set_colors(color);
-    uv_mesh_data.set_colors(color);
-    calculateDistortion = false;
+      mesh_data.show_texture = false;
+      mesh_data.set_colors(color);
+      uv_mesh_data.set_colors(color);
+      calculateDistortion = false;
   }
 }
 
