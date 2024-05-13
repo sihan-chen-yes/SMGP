@@ -44,10 +44,12 @@ void Deformation::update_handle_vertex_selection(const Eigen::VectorXi &new_hand
 void Deformation::get_smooth_mesh(Eigen::MatrixXd &V_res) {
     // Get the smooth mesh B
     // Store the result to V_res
+    //S -> B
     Eigen::MatrixXd rhs, V_f, V_c;
     slice(V_original, new_handle_vertices, 1, V_c);
     rhs = -Afc * V_c;
     V_f = solver.solve(rhs);
+    // V_res = B
     slice_into(V_f, new_free_vertices, 1, V_res);
 
     //displacement between S and B
@@ -81,6 +83,8 @@ void Deformation::get_smooth_mesh(Eigen::MatrixXd &V_res) {
             }
         }
         y_axis = Ni.cross(x_axis);
+        assert(abs(x_axis.dot(Ni)) < 1e-6);
+        assert(abs(y_axis.dot(Ni)) < 1e-6);
         //projection to get xyz components
         component(i, 0) = displacement.row(i).dot(x_axis);
         component(i, 1) = displacement.row(i).dot(y_axis);
@@ -91,7 +95,7 @@ void Deformation::get_smooth_mesh(Eigen::MatrixXd &V_res) {
 void Deformation::get_deformed_smooth_mesh(const Eigen::MatrixXd &handle_vertex_positions, Eigen::MatrixXd &V_res) {
     // Given the handle vertex positions, get the deformed smooth mesh B'
     // Store the result to V_res
-    // B'
+    // B -> B'
     Eigen::MatrixXd rhs, V_f;
     rhs = -Afc * handle_vertex_positions;
     V_f = solver.solve(rhs);
@@ -102,9 +106,9 @@ void Deformation::get_deformed_smooth_mesh(const Eigen::MatrixXd &handle_vertex_
 void Deformation::get_deformed_mesh(const Eigen::MatrixXd &handle_vertex_positions, Eigen::MatrixXd &V_res) {
     // Given the handle vertex positions, get the deformed mesh with details S'
     // Store the result to V_res
-    // B'
+    // B -> B'
     get_deformed_smooth_mesh(handle_vertex_positions, V_res);
-
+    // B'-> S'
     //add details back
     MatrixXd N_prime, displacement_prime(V_res.rows(), 3);
     Vector3d N_i_prime, vi_prime, vj_prime, x_axis_prime, y_axis_prime;
@@ -114,7 +118,9 @@ void Deformation::get_deformed_mesh(const Eigen::MatrixXd &handle_vertex_positio
         vi_prime = V_res.row(i);
         vj_prime = V_res.row(v_index[i]);
         x_axis_prime = ((vj_prime - vi_prime) - N_i_prime.dot(vj_prime - vi_prime) * N_i_prime).normalized();
+        assert(abs(x_axis_prime.dot(N_i_prime)) < 1e-6);
         y_axis_prime = N_i_prime.cross(x_axis_prime);
+        assert(abs(y_axis_prime.dot(N_i_prime)) < 1e-6);
         displacement_prime.row(i) = component(i, 0) * x_axis_prime + component(i, 1) * y_axis_prime + component(i, 2) * N_i_prime;
     }
     //S' = B' + D
