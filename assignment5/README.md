@@ -1,7 +1,7 @@
 # Assignment 5
-Name: 'Your real name'
+Name: 'Sihan Chen'
 
-Legi-Nr: 'Your legi number'
+Legi-Nr: '23-943-079'
 
 ## Required results
 Edit this 'README.md' file to answer the theory question(s).

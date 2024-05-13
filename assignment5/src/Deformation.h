@@ -2,7 +2,8 @@
 #define ex6_Solution_h
 
 #include <Eigen/Core>
-
+#include <Eigen/SparseCholesky>
+using namespace Eigen;
 
 class Deformation
 {
@@ -23,6 +24,13 @@ public:
 private:
     // Add other private members and methods here as needed here.
     Eigen::MatrixXd V_original;  // Vertices of the original mesh
+//    Eigen::MatrixXd V_c;  // Vertices of constraint
+    Eigen::MatrixXd V_smooth;  // Vertices of smooth mesh
+    Eigen::MatrixXd V_deformed_smooth;  // Vertices of deformed smooth mesh
+    Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::RowMajor> solver;
+    SparseMatrix<double> Afc;
+    VectorXi new_free_vertices;
+    VectorXi new_handle_vertices;
 };
 
 #endif
