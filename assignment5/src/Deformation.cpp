@@ -45,6 +45,7 @@ void Deformation::update_handle_vertex_selection(const Eigen::VectorXi &new_hand
     solver.compute(Aff);
     handle_vertices = new_handle_vertices;
     //S:G D
+    Eigen::SparseMatrix<double> G, D;
     grad(V_original, F, G);
     VectorXd double_areas, areas;
     doublearea(V_original, F, double_areas);
@@ -59,9 +60,11 @@ void Deformation::update_handle_vertex_selection(const Eigen::VectorXi &new_hand
     }
     D.setFromTriplets(triplets.begin(), triplets.end());
 
-    SparseMatrix<double> H, Hff;
+    SparseMatrix<double> H, Hff, C;
     C = G.transpose() * D * G;
     H = C.transpose() * C;
+    //acceleration
+    E_pre = C.transpose() * G.transpose() * D;
     slice(H, free_vertices, free_vertices, Hff);
     slice(H, free_vertices, handle_vertices, Hfc);
 
@@ -80,7 +83,7 @@ void Deformation::get_smooth_mesh(Eigen::MatrixXd &V_res) {
     slice_into(V_f, free_vertices, 1, V_res);
     slice_into(V_c, handle_vertices, 1, V_res);
 
-    B = V_res;
+    MatrixXd B = V_res;
 
     //displacement between S and B
     MatrixXd displacement = V_original - V_res;
@@ -120,7 +123,20 @@ void Deformation::get_smooth_mesh(Eigen::MatrixXd &V_res) {
     }
 
     //prepare for deformation transfer
+    MatrixXd N;
     per_face_normals(B, F, N);
+    Q_inverse.resize(F.rows());
+    Vector3d q1, q2, q3, n;
+    MatrixXd Q(3, 3);
+    for (int i = 0; i < F.rows(); ++i) {
+        q1 = B.row(F(i, 0));
+        q2 = B.row(F(i, 1));
+        q3 = B.row(F(i, 2));
+        Q.col(0) = q1 - q3;
+        Q.col(1) = q2 - q3;
+        Q.col(2) = N.row(i);
+        Q_inverse[i] = Q.inverse();
+    }
 }
 
 void Deformation::get_deformed_smooth_mesh(const Eigen::MatrixXd &handle_vertex_positions, Eigen::MatrixXd &V_res) {
@@ -165,23 +181,18 @@ void Deformation::get_deformed_mesh_deformation_transfer(const Eigen::MatrixXd &
     MatrixXd B_prime = V_res;
 
     //compute Sj
-    MatrixXd S(3 * F.rows(), 3), Sj(3, 3), Q_prime(3, 3), Q(3, 3), N_prime;
-    Vector3d q1, q2, q3, q1_prime, q2_prime, q3_prime, n, n_prime;
+    MatrixXd S(3 * F.rows(), 3), Sj(3, 3), Q_prime(3, 3), N_prime;
+    Vector3d q1_prime, q2_prime, q3_prime, n_prime;
     per_face_normals(B_prime, F, N_prime);
     for (int i = 0; i < F.rows(); ++i) {
-        q1 = B.row(F(i, 0));
-        q2 = B.row(F(i, 1));
-        q3 = B.row(F(i, 2));
-        Q.col(0) = q1 - q3;
-        Q.col(1) = q2 - q3;
-        Q.col(2) = N.row(i);
         q1_prime = B_prime.row(F(i, 0));
         q2_prime = B_prime.row(F(i, 1));
         q3_prime = B_prime.row(F(i, 2));
         Q_prime.col(0) = q1_prime - q3_prime;
         Q_prime.col(1) = q2_prime - q3_prime;
         Q_prime.col(2) = N_prime.row(i);
-        Sj = (Q_prime * Q.inverse()).transpose();
+        //acceleration
+        Sj = (Q_prime * Q_inverse[i]).transpose();
         //align with G D
         S.row(i) = Sj.row(0);
         S.row(F.rows() + i) = Sj.row(1);
@@ -189,11 +200,10 @@ void Deformation::get_deformed_mesh_deformation_transfer(const Eigen::MatrixXd &
     }
 
     MatrixXd R, E, V_f, E_f, rhs;
-    R = G.transpose() * D * S;
-    E = C.transpose() * R;
+    //acceleration
+    E = E_pre * S;
     slice(E, free_vertices, 1, E_f);
     rhs = -Hfc * handle_vertex_positions + E_f;
     V_f = solver_deformation_transfer.solve(rhs);
     slice_into(V_f, free_vertices, 1, V_res);
-    slice_into(handle_vertex_positions, handle_vertices, 1, V_res);
 }

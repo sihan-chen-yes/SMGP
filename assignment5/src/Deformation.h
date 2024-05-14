@@ -28,13 +28,15 @@ private:
     Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::RowMajor> solver;
     Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::RowMajor> solver_deformation_transfer;
     SparseMatrix<double> Afc;
-    SparseMatrix<double> Hfc, C;
+    SparseMatrix<double> Hfc;
     VectorXi free_vertices;
     VectorXi handle_vertices;
     MatrixXd component;
     vector<int> v_index;
-    Eigen::SparseMatrix<double> G, D;
-    MatrixXd B, N;
+
+    vector<MatrixXd> Q_inverse;
+    MatrixXd E_pre;
+
 };
 
 #endif
