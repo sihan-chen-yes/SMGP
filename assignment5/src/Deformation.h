@@ -26,11 +26,15 @@ private:
     // Add other private members and methods here as needed here.
     Eigen::MatrixXd V_original;  // Vertices of the original mesh
     Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::RowMajor> solver;
+    Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::RowMajor> solver_deformation_transfer;
     SparseMatrix<double> Afc;
-    VectorXi new_free_vertices;
-    VectorXi new_handle_vertices;
+    SparseMatrix<double> Hfc, C;
+    VectorXi free_vertices;
+    VectorXi handle_vertices;
     MatrixXd component;
     vector<int> v_index;
+    Eigen::SparseMatrix<double> G, D;
+    MatrixXd B, N;
 };
 
 #endif

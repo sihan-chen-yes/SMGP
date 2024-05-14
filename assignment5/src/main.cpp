@@ -12,7 +12,7 @@
 #include "Deformation.h"
 
 //activate this for alternate UI (easier to debug but no interactive updates, turn this OFF for your report)
-#define UPDATE_ONLY_ON_UP
+//#define UPDATE_ONLY_ON_UP
 
 using namespace std;
 using namespace Eigen;
@@ -95,6 +95,7 @@ void onNewHandleID();
 void applySelection();
 
 bool solve(Viewer &viewer) {
+    //TODO
     igl::slice_into(handle_vertex_positions, handle_vertices, 1, V);
 
     if (view_mode == ORIGINAL)
