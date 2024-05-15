@@ -35,7 +35,7 @@ private:
     vector<int> v_index;
 
     vector<MatrixXd> Q_inverse;
-    MatrixXd E_pre;
+    SparseMatrix<double> E_pre;
 
 };
 

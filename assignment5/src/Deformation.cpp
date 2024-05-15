@@ -64,7 +64,7 @@ void Deformation::update_handle_vertex_selection(const Eigen::VectorXi &new_hand
     C = G.transpose() * D * G;
     H = C.transpose() * C;
     //acceleration
-    E_pre = C.transpose() * G.transpose() * D;
+    E_pre = (G * C).transpose() * D;
     slice(H, free_vertices, free_vertices, Hff);
     slice(H, free_vertices, handle_vertices, Hfc);
 
