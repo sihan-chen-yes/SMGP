@@ -74,30 +74,38 @@ bool selected = false;
 //for acceleration
 bool prefactored = false;
 SparseMatrix<double> Hff, Hfc, G;
+//constrained and free vertex index
 VectorXi constrain_points;
 VectorXi free_points;
+//constrained vertex position
 MatrixXd V_c;
+//prefactoring
 Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::RowMajor> solver;
 //unpose operation
 MatrixXd V_EG_pose(0, 3);
 MatrixXd V_EG_unposed(0, 3);
+//container for all quaternion
 std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> q_EG_list;
-
+//container for quaternion and translation of each example
 vector<vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>>> egQs;
 vector<vector<Eigen::Vector3d>> egTs;
-//for acceleration
+//switch for acceleration
 bool vertex_unposed = false;
 bool face_unposed = false;
 bool RBF_interpolated = false;
-//coeff to caculate aj
+//coeff to calculate aj
 MatrixXd c;
 MatrixXd unpose_displacement(0, 3);
 int num_eg = 0;
 //choosing vertex_unposed shape to present
 int unposed_shape = 0;
-
+//T 'displacement' of face in rest pose
 vector<vector<MatrixXd>> deformation_gradient;
-
+//acceleration
+vector<Matrix3d> T_f_list;
+vector<Matrix3d> Q_f_list;
+vector<Matrix3d> S_f_list;
+//decomposition switch
 bool decompose_T = false;
 
 enum AnimationMode {
@@ -124,7 +132,7 @@ void update_current_frames(int max_frames);
 
 void skinning_weight_computation();
 
-void handle_selection(int coloring_bone_id);
+void handle_selection(int bone_id);
 
 void get_skinning_weight();
 
@@ -163,15 +171,12 @@ void possion_stitching(bool use_prefactored, const MatrixXd &V_old, const Matrix
 
 void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &face_skinning_weight,
                                     const vector<Eigen::Quaterniond,
-                                            Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ,
-                                    const vector<Eigen::Vector3d> &vT, MatrixXd &V);
+                                            Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, MatrixXd &V);
 
 void decomposition(const MatrixXd &T, Matrix3d &R, Matrix3d &S);
 
 MatrixXd get_avg_rotation(const VectorXd &weight, const vector<Eigen::Quaterniond,
         Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ);
-
-//#TODO
 
 bool load_files(string base_path) {
     string mesh_filename = base_path + "/rest.obj";
@@ -217,6 +222,7 @@ bool load_files(string base_path) {
         MatrixXd Q_final;
         igl::readDMAT(pose_target_filename, Q_final);
 
+//debug
 //    Q_final = Q.block(33 * BE.rows(), 0, BE.rows(), 4);
 
         for (int i = 0; i < BE.rows(); ++i) {
@@ -313,7 +319,6 @@ int main(int argc, char *argv[]) {
             ImGui::Checkbox("decompose_T", &decompose_T);
         }
     };
-//TODO
 
     viewer.callback_key_down = callback_key_down;
     viewer.callback_pre_draw = skeleton_animation_pre_draw;
@@ -433,6 +438,7 @@ bool BS_pre_draw(Viewer &viewer) {
     igl::forward_kinematics(C_original, BE, P, dQ, vQ, vT);
     get_skinning_weight();
 
+    //choose blend skinning methods
     if (BS_mode == LBS) {
         //LBS for vertex on mesh
         linear_blend_skinning(V_original, vertex_skinning_weight, vQ, vT, V);
@@ -443,7 +449,7 @@ bool BS_pre_draw(Viewer &viewer) {
     } else if (BS_mode == VCAD) {
         vertex_context_aware_deformation(V_original, vertex_skinning_weight, vQ, vT, V);
     } else if (BS_mode == FCAD) {
-        face_context_aware_deformation(V_original, face_skinning_weight, vQ, vT, V);
+        face_context_aware_deformation(V_original, face_skinning_weight, vQ, V);
     }
 
     transform_bone_vertex();
@@ -462,6 +468,7 @@ bool BS_pre_draw(Viewer &viewer) {
     //green color for edges
     edge_colors.col(1) = Eigen::VectorXd::Ones(BE.rows());
 
+    //only visualize specific unposed shape
     if (visualization_mode == UNPOSED) {
         viewer.data().set_mesh(V, F);
         viewer.data().set_colors(vertex_colors);
@@ -481,16 +488,19 @@ bool BS_pre_draw(Viewer &viewer) {
 bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
     bool handled = false;
 
+    //for 3.Skeleton Animation
     if (key == 'Q') {
         viewer.callback_pre_draw = skeleton_animation_pre_draw;
         handled = true;
     }
 
+    //for 4.Harmonic Skinning Weight
     if (key == 'W') {
         viewer.callback_pre_draw = skinning_weight_pre_draw;
         handled = true;
     }
 
+    //for 5.6.7.8.
     if (key == 'E') {
         viewer.callback_pre_draw = BS_pre_draw;
         handled = true;
@@ -499,31 +509,32 @@ bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers) {
     return handled;
 }
 
-//Quaterniond quaternion_interpolation(const Quaterniond &q0, const Quaterniond &q1, double t) {
-//    double dot_product = q0.dot(q1);
-//    //use shortest rotation path
-//    double theta = std::acos(abs(dot_product));
-//    double scalar0;
-//    double scalar1;
-//    //very close use linear interpolation
-//    if (abs(theta) < 1e-10) {
-//        scalar0 = 1 - t;
-//        scalar1 = t;
-//    } else {
-//        //SLERP interpolation
-//        double sin_theta = std::sin(theta);
-//        scalar0 = std::sin((1 - t) * theta) / sin_theta;
-//        scalar1 = std::sin(t * theta) / sin_theta;
-//    }
-//
-//    if(dot_product < 0) {
-//        scalar1 = -scalar1;
-//    }
-//    Quaterniond q;
-//    q.coeffs() = scalar0 * q0.coeffs() + scalar1 * q1.coeffs();
-//    return q;
-//}
+Quaterniond quaternion_interpolation(const Quaterniond &q0, const Quaterniond &q1, double t) {
+    double dot_product = q0.dot(q1);
+    //use shortest rotation path
+    double theta = std::acos(abs(dot_product));
+    double scalar0;
+    double scalar1;
+    //very close use linear interpolation
+    if (abs(theta) < 1e-10) {
+        scalar0 = 1 - t;
+        scalar1 = t;
+    } else {
+        //SLERP interpolation
+        double sin_theta = std::sin(theta);
+        scalar0 = std::sin((1 - t) * theta) / sin_theta;
+        scalar1 = std::sin(t * theta) / sin_theta;
+    }
 
+    if(dot_product < 0) {
+        scalar1 = -scalar1;
+    }
+    Quaterniond q;
+    q.coeffs() = scalar0 * q0.coeffs() + scalar1 * q1.coeffs();
+    return q;
+}
+
+//control video play
 void update_current_frames(int max_frames) {
     // play the video from start to end, from end to start
     // frames for next step
@@ -606,6 +617,7 @@ void skinning_weight_computation() {
         }
     }
 
+    //SANITY CHECK
     for (int i = 0; i < V.rows(); ++i) {
         assert(abs(vertex_skinning_weight.col(i).sum() - 1) <= 1e-6);
     }
@@ -614,11 +626,12 @@ void skinning_weight_computation() {
     }
 }
 
-void handle_selection(int coloring_bone_id) {
+//pick vertex around given bone automatically
+void handle_selection(int bone_id) {
     V = V_original;
     // geometric selection
-    //select points around bone coloring_bone_id
-    RowVector2i bone_edge = BE.row(coloring_bone_id);
+    //select points around bone bone_id
+    RowVector2i bone_edge = BE.row(bone_id);
     int start = bone_edge(0);
     int end = bone_edge(1);
     RowVector3d v_start = C_original.row(start);
@@ -637,7 +650,7 @@ void handle_selection(int coloring_bone_id) {
             min = r;
         }
     }
-    min *= 1.5;
+    min *= 2;
     //find points closer to min
     for (int i = 0; i < V.rows(); ++i) {
         RowVector3d v1 = V.row(i) - v_start;
@@ -646,13 +659,13 @@ void handle_selection(int coloring_bone_id) {
         RowVector3d p = v1.dot(b) * b;
         //inside cylinder
         if ((v1 - p).norm() <= min && v1.dot(p) >= 0 && v2.dot(p) <= 0) {
-            handle_id[i] = coloring_bone_id;
+            handle_id[i] = bone_id;
         }
     }
 }
 
+//get quaternion of next frame and update frame
 void get_dQ_current(std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> &dQ) {
-
     if (animation_mode == SEQUENCE) {
         //check
         if (q_list.size() == 0) {
@@ -747,6 +760,7 @@ void dual_quaternion_skinning(const MatrixXd &V_original, const MatrixXd &vertex
          Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, const vector<Eigen::Vector3d> &vT, MatrixXd &V) {
     vector<Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> veQ(vQ.size());
     // follow igl::dqs
+
     // vertex_skinning_weight:#BE x #V
     // Convert quats + trans into dual parts
     for (int k = 0; k < vertex_skinning_weight.rows(); ++k) {
@@ -803,6 +817,7 @@ void face_blend_skinning(const MatrixXd &V_original, const MatrixXd &face_skinni
     }
 
     //possion stitching
+    //if not prefactored then just do prefactoring!
     bool using_prefactored;
     if (!prefactored) {
         using_prefactored = false;
@@ -840,6 +855,7 @@ Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, const vector<Eigen::Vector3d>
         vertex_unposed = true;
     }
 
+    //if only visualize unposed shape
     if (visualization_mode == UNPOSED) {
         if (unposed_shape >= num_eg) {
             cout <<"invalid vertex_unposed shape" << endl;
@@ -862,8 +878,9 @@ Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, const vector<Eigen::Vector3d>
 }
 
 void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &face_skinning_weight, const vector<Eigen::Quaterniond,
-        Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, const vector<Eigen::Vector3d> &vT, MatrixXd &V) {
+        Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, MatrixXd &V) {
     int m = F.rows();
+    //acceleration
     if(!face_unposed) {
         V_EG_unposed.resize(V_EG_pose.rows(), 3);
         fill_egQs();
@@ -886,6 +903,7 @@ void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &
             V_EG_unposed.block(i * V_unpose.rows(), 0, V_unpose.rows(), 3) = V_unpose;
         }
 
+        //compute deformation gradient
         for (int i = 0; i < num_eg; ++i) {
             MatrixXd V_unpose = V_EG_unposed.block(i * V.rows(), 0, V.rows(), 3);
             MatrixXd N_unpose, N;
@@ -894,6 +912,7 @@ void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &
             vector<MatrixXd> T_i;
             Vector3d q1, q2, q3, q1_prime, q2_prime, q3_prime;
             MatrixXd Q(3, 3), Q_prime(3, 3);
+
             for (int j = 0; j < F.rows(); ++j) {
                 MatrixXd T_i_j(3, 3);
                 q1 = V_original.row(F(j, 0));
@@ -918,6 +937,7 @@ void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &
         face_unposed = true;
     }
 
+    //if only visualize unposed shape
     if (visualization_mode == UNPOSED) {
         if (unposed_shape >= num_eg) {
             cout <<"invalid vertex_unposed shape" << endl;
@@ -935,27 +955,44 @@ void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &
         MatrixXd R = R_per_face[i];
         // deformation gradient for a face
         if (!decompose_T) {
-            MatrixXd T(3, 3);
-            T.setZero();
-            for (int j = 0; j < num_eg; ++j) {
-                T += a[j] * deformation_gradient[j][i];
+            Matrix3d T(3, 3);
+            //if buffer not full
+            if (T_f_list.size() < F.rows()) {
+                T.setZero();
+                for (int j = 0; j < num_eg; ++j) {
+                    T += a[j] * deformation_gradient[j][i];
+                }
+                T_f_list.push_back(T);
+            } else {
+                assert(T_f_list.size() == F.rows());
+                T = T_f_list[i];
             }
             R = R * T;
         } else {
-            //decompose T into rotation and skew
-            MatrixXd S(3, 3);
-            S.setZero();
-            vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> q_list;
-            for (int j = 0; j < num_eg; ++j) {
-                //already w.r.t to p.T(1x3)
-                Matrix3d Q_j_f, S_j_f;
-                decomposition(deformation_gradient[j][i], Q_j_f, S_j_f);
-                //w.r.t p.T(1x3)
-                Quaterniond q(Q_j_f);
-                q_list.push_back(q);
-                S += a[j] * S_j_f;
+            //decompose T into rotation and skew matrix
+            Matrix3d S(3, 3);
+            Matrix3d Q_avg(3, 3);
+            //if buffer not full
+            if (S_f_list.size() < F.rows()) {
+                S.setZero();
+                vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> q_list;
+                for (int j = 0; j < num_eg; ++j) {
+                    //already w.r.t to p.T(1x3)
+                    Matrix3d Q_j_f, S_j_f;
+                    decomposition(deformation_gradient[j][i], Q_j_f, S_j_f);
+                    //w.r.t p.T(1x3)
+                    Quaterniond q(Q_j_f);
+                    q_list.push_back(q);
+                    S += a[j] * S_j_f;
+                }
+                Q_avg = get_avg_rotation(a, q_list);
+                S_f_list.push_back(S);
+                Q_f_list.push_back(Q_avg);
+            } else {
+                assert(S_f_list.size() == F.rows());
+                S = S_f_list[i];
+                Q_avg = Q_f_list[i];
             }
-            MatrixXd Q_avg = get_avg_rotation(a, q_list);
             R = R * Q_avg * S;
         }
         B.row(i) = R.row(0);
@@ -965,6 +1002,7 @@ void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &
 
     //possion stitching
     bool using_prefactored;
+    //if not prefactored then just do prefactoring!
     if (!prefactored) {
         using_prefactored = false;
         prefactored = true;
@@ -975,6 +1013,7 @@ void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &
     possion_stitching(using_prefactored, V_original, B, V);
 }
 
+//decompose T into rotation and skew matrix
 void decomposition(const MatrixXd &T, Matrix3d &R, Matrix3d &S) {
     //(RS).T * (RS) = S.TS = V.T D V
     Eigen::Matrix3d M = T.transpose() * T;
@@ -986,8 +1025,9 @@ void decomposition(const MatrixXd &T, Matrix3d &R, Matrix3d &S) {
     S = V * D.cwiseSqrt() * V.transpose();
 
     R = T * S.inverse();
-//    Matrix3d I = R * R.transpose();
 }
+
+//fill the container for each example
 void fill_egQs() {
     for (int i = 0; i < num_eg; ++i) {
         //relative quaternion for each example
@@ -1004,6 +1044,7 @@ void fill_egQs() {
     }
 }
 
+//get a_j
 VectorXd get_a() {
     std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> current_egQ;
     std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> other_egQ;
@@ -1049,6 +1090,7 @@ VectorXd get_a() {
     return a;
 }
 
+//get distance between P and P_j
 double get_RBF_distance(const std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> &Q0,
                         const std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> &Q1,
                         const vector<Eigen::Vector3d> &T0,
@@ -1079,6 +1121,7 @@ double get_RBF_distance(const std::vector<Eigen::Quaterniond, Eigen::aligned_all
     return r * r * r;
 }
 
+//fusing transformation of each joint and skinning weight for each vertex
 MatrixXd get_fusing_transformation(int j, const MatrixXd &vertex_skinning_weight, const vector<Eigen::Quaterniond,
         Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, const vector<Eigen::Vector3d> &vT) {
     assert(vQ.size() == BE.rows());
@@ -1097,6 +1140,7 @@ MatrixXd get_fusing_transformation(int j, const MatrixXd &vertex_skinning_weight
     return T;
 }
 
+//quaternion avg for all faces
 vector<MatrixXd> get_avg_R_per_face(const MatrixXd &face_skinning_weight, const vector<Eigen::Quaterniond,
 Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ) {
     vector<MatrixXd> R_per_face;
@@ -1109,6 +1153,7 @@ Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ) {
     return R_per_face;
 }
 
+//quaternion avg
 MatrixXd get_avg_rotation(const VectorXd &weight, const vector<Eigen::Quaterniond,
         Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ) {
     assert(weight.size() == vQ.size());
@@ -1128,9 +1173,13 @@ MatrixXd get_avg_rotation(const VectorXd &weight, const vector<Eigen::Quaternion
     return q_avg.toRotationMatrix();
 }
 
+//just derive the same formula as assignment 5
+//V.T G.TG V-2 V.T G.TB
+// H = G.TG E = G.TB
+//derivative w.r.t. Vf => HffVf = -HfcVc + Ef
 void possion_stitching(bool use_prefactored, const MatrixXd &V_old, const MatrixXd &B, MatrixXd &V_new) {
+    //the function will overwrite the global variable!!!!
     if (!use_prefactored) {
-        //overwrite the global variable!!!!
         SparseMatrix<double> H;
         igl::grad(V_old, F, G);
         constrain_points.resize(V_old.rows());
