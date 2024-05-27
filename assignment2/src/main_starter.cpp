@@ -358,7 +358,11 @@ void pcaNormal()
 }
 
 MatrixXd getCovarianceMatrix(const MatrixXd& X) {
-    return 1 / (X.rows() - 1.0) * X.transpose() * X;
+    VectorXd mean = X.colwise().mean();
+
+    MatrixXd centered = X.rowwise() - mean.transpose();
+
+    return (centered.transpose() * centered) / (X.rows() - 1);
 }
 
 bool callback_key_down(Viewer &viewer, unsigned char key, int modifiers)
