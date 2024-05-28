@@ -190,6 +190,7 @@ void computeParameterization(int type) {
           fixed_UV_indices << indices[0], indices[1];
           fixed_UV_positions.resize(2, 2);
           //set the UV coordinate randomly
+          //TODO need set the UV coordinate according to the geodesic distance
           fixed_UV_positions << -1, 0,
                                  1, 0;
           break;
@@ -217,6 +218,7 @@ void computeParameterization(int type) {
     Lu = Adj - D;
 
     //build A.TA
+    //reference to the green's identity see libigl tutorial
     A.resize(2 * nv, 2 * nv);
     vector<Triplet<double>> triplets;
     for (int i = 0; i < Lu.outerSize(); ++i) {
@@ -238,6 +240,7 @@ void computeParameterization(int type) {
     igl::cotmatrix(V, F, Lc);
 
     //build A.TA
+    //reference to the green's identity see libigl tutorial
     A.resize(2 * nv, 2 * nv);
     vector<Triplet<double>> triplets;
     for (int i = 0; i < Lc.outerSize(); ++i) {
@@ -264,10 +267,10 @@ void computeParameterization(int type) {
     DxT = Dx.transpose();
     DyT = Dy.transpose();
     SparseMatrix<double> A11, A12, A21, A22, upA, downA;
-    A11 = 2 * DxT * areaMatrix * Dx + 2 * DyT * areaMatrix * Dy;
-    A12 = -2 * DxT * areaMatrix * Dy + 2 * DyT * areaMatrix * Dx;
-    A21 = -2 * DyT * areaMatrix * Dx + 2 * DxT * areaMatrix * Dy;
-    A22 = 2 * DyT * areaMatrix * Dy + 2 * DxT * areaMatrix * Dx;
+    A11 = DxT * areaMatrix * Dx + DyT * areaMatrix * Dy;
+    A12 = -DxT * areaMatrix * Dy + DyT * areaMatrix * Dx;
+    A21 = -DyT * areaMatrix * Dx + DxT * areaMatrix * Dy;
+    A22 = DyT * areaMatrix * Dy + DxT * areaMatrix * Dx;
     igl::cat(2, A11, A12, upA);
     igl::cat(2, A21, A22, downA);
     igl::cat(1, upA, downA, A);
@@ -469,6 +472,7 @@ int main(int argc, char *argv[]) {
 SparseMatrix<double> getAreaMatrix() {
     int nf = F.rows();
     VectorXd area;
+    //already doubled
     igl::doublearea(V, F, area);
     vector<Triplet<double>> triplets;
     //building triangle area matrix

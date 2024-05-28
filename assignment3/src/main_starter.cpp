@@ -87,8 +87,10 @@ RowVector3d fit_and_get_normal(MatrixXd& neighbors) {
     {
         double u = local_neighbors(c, 0);
         double v = local_neighbors(c, 1);
+        //height
         double n = local_neighbors(c, 2);
-
+        //au^2 + bv^2 + cuv + du + ev
+        // no constant as plugin(0, 0) height is 0
         A(c,0) = u*u;
         A(c,1) = v*v;
         A(c,2) = u*v;
@@ -100,7 +102,8 @@ RowVector3d fit_and_get_normal(MatrixXd& neighbors) {
 
     sol = A.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
     RowVector3d normal;
-    //(d, e, -1)
+    //f(u,v) = n
+    //f(u, v) - n = 0 -> derivative at origin (d, e, -1)
     normal << sol(3), sol(4), -1;
     //rotate back to original frame
     normal *= eigenvectors.transpose();
