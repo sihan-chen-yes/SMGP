@@ -46,25 +46,62 @@ Edit this 'README.md' file to report all your results. Use the `./res` folder to
 
 $R = R_z(\gamma)R_y(\beta)R_x(\alpha)$, where(assuming X-Y-Z  rotation order):
 $$
-R_x(\alpha) = \begin{pmatrix} 1 & 0 & 0 \\ 0 & \cos \alpha & -\sin \alpha \\ 0 & \sin \alpha & \cos \alpha \end{pmatrix} \\ R_y(\beta) = \begin{pmatrix} \cos \beta & 0 & \sin \beta \\ 0 & 1 & 0 \\ -\sin \beta & 0 & \cos \beta \end{pmatrix}\\ R_z(\gamma) = \begin{pmatrix} \cos \gamma & -\sin \gamma & 0 \\ \sin \gamma & \cos \gamma & 0 \\ 0 & 0 & 1 \end{pmatrix}
+R_x(\alpha) = \begin{pmatrix} 1 & 0 & 0 \\ 0 & \cos \alpha & -\sin \alpha \\ 0 & \sin \alpha & \cos \alpha \end{pmatrix}
+$$
+$$
+R_y(\beta) = \begin{pmatrix} \cos \beta & 0 & \sin \beta \\ 0 & 1 & 0 \\ -\sin \beta & 0 & \cos \beta \end{pmatrix}
+$$
+$$
+R_z(\gamma) = \begin{pmatrix} \cos \gamma & -\sin \gamma & 0 \\ \sin \gamma & \cos \gamma & 0 \\ 0 & 0 & 1 \end{pmatrix}
 $$
 **rotation matrix -> quaternion**:
 $$
-R = \begin{pmatrix} r_{11} & r_{12} & r_{13} \\ r_{21} & r_{22} & r_{23} \\ r_{31} & r_{32} & r_{33} \end{pmatrix}, t = \text{tr}(R) = r_{11} + r_{22} + r_{33} 
+R = \begin{pmatrix} r_{11} & r_{12} & r_{13} \\ r_{21} & r_{22} & r_{23} \\ r_{31} & r_{32} & r_{33} \end{pmatrix}
+$$
+$$
+t = \text{tr}(R) = r_{11} + r_{22} + r_{33}
 $$
 if $t > 0$ :
 $$
-r = \sqrt{1 + t} \\ s = \frac{1}{2r} \\ w = \frac{1}{2} r \\ x = (r_{32} - r_{23}) s \\ y = (r_{13} - r_{31}) s \\ z = (r_{21} - r_{12}) s
+r = \sqrt{1 + t}
+$$
+$$
+s = \frac{1}{2r}
+$$
+$$
+w = \frac{1}{2} r
+$$
+$$
+x = (r_{32} - r_{23}) s
+$$
+$$
+y = (r_{13} - r_{31}) s
+$$
+$$
+z = (r_{21} - r_{12}) s
 $$
 if $t < 0$ and $ r_{11}$ is the largest diagonal entry (other situations follow the cyclic permutation):
 $$
-r = \sqrt{1 + r_{11} - r_{22} - r_{33}} \\ s = \frac{1}{2r} \\ w = (r_{32} - r_{23}) s \\ x = \frac{1}{2} r \\ y = (r_{12} + r_{21}) s \\ z = (r_{31} + r_{13}) s
+r = \sqrt{1 + r_{11} - r_{22} - r_{33}}
+$$
+$$
+s = \frac{1}{2r}
+$$
+$$
+w = (r_{32} - r_{23}) s
+$$
+$$
+x = \frac{1}{2} r
+$$
+$$
+y = (r_{12} + r_{21}) s
+$$
+$$
+z = (r_{31} + r_{13}) s
 $$
 **quaternion + translation -> dual quaternion**:
 
-$$q = q_0 + \frac{\epsilon}{2}(t_1\mathbf{i} + t_2\mathbf{j} + t_3\mathbf{k})$$, where $q_0$ is a rotation represented as a quaternion, $t = (t_1, t_2, t_3)$ represents a translation
-
-
+$q = q_0 + \frac{\epsilon}{2}(t_1\mathbf{i} + t_2\mathbf{j} + t_3\mathbf{k})$, where $q_0$ is a rotation represented as a quaternion, $t = (t_1, t_2, t_3)$ represents a translation
 
 ### Task 3: animation of the skeleton
 
