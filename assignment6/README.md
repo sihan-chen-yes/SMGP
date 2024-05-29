@@ -101,7 +101,17 @@ z = (r_{31} + r_{13}) s
 $$
 **quaternion + translation -> dual quaternion**:
 
-$q = q_0 + \frac{\epsilon}{2}(t_1\mathbf{i} + t_2\mathbf{j} + t_3\mathbf{k})$, where $q_0$ is a rotation represented as a quaternion, $t = (t_1, t_2, t_3)$ represents a translation
+$q = q_0 + \frac{\epsilon}{2}(t_1\mathbf{i} + t_2\mathbf{j} + t_3\mathbf{k})$, where $q_0$ is a rotation represented as a quaternion, $t = (t_1, t_2, t_3)$​ represents a translation
+
+
+
+**If for some reasons, formula can't be rendered properly:**
+
+<img align="center"  src="./res/formula1.png">
+
+<img align="center"  src="./res/formula2.png">
+
+<img align="center"  src="./res/formula3.png">
 
 ### Task 3: animation of the skeleton
 
