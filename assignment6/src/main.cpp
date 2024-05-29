@@ -27,7 +27,11 @@ using namespace igl;
 using Viewer = igl::opengl::glfw::Viewer;
 
 Viewer viewer;
-
+/**
+ * below contains lots of switches and confusing and tedious code for acceleration,
+ * so that we can get a comparatively smooth animation,
+ * one could ignore them and grasp the main logistic for first glance! which's commented as acceleration
+ */
 //vertex array, #V x3
 Eigen::MatrixXd V(0, 3), V_original(0, 3);
 //face array, #F x3
@@ -102,9 +106,8 @@ int unposed_shape = 0;
 //T 'displacement' of face in rest pose
 vector<vector<MatrixXd>> deformation_gradient;
 //acceleration
-vector<Matrix3d> T_f_list;
-vector<Matrix3d> Q_f_list;
-vector<Matrix3d> S_f_list;
+vector<Matrix3d> Q_j_f_list;
+vector<Matrix3d> S_j_f_list;
 //decomposition switch
 bool decompose_T = false;
 
@@ -179,6 +182,9 @@ MatrixXd get_avg_rotation(const VectorXd &weight, const vector<Eigen::Quaternion
         Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ);
 
 bool load_files(string base_path) {
+    /*
+     * loading files with errors captures
+     */
     string mesh_filename = base_path + "/rest.obj";
     igl::read_triangle_mesh(mesh_filename, V, F);
     cout << "loaded mesh" << endl;
@@ -221,9 +227,6 @@ bool load_files(string base_path) {
     if (pose_target_file.good()) {
         MatrixXd Q_final;
         igl::readDMAT(pose_target_filename, Q_final);
-
-//debug
-//    Q_final = Q.block(33 * BE.rows(), 0, BE.rows(), 4);
 
         for (int i = 0; i < BE.rows(); ++i) {
             RowVector4d r = Q_final.row(i);
@@ -277,7 +280,7 @@ bool load_files(string base_path) {
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         cout << "Usage assignment6 loading files" << endl;
-        string base_path = "../data/context-aware";
+        string base_path = "../data/context-aware/";
         load_files(base_path);
     } else {
         load_files(argv[1]);
@@ -357,6 +360,7 @@ bool skeleton_animation_pre_draw(Viewer &viewer) {
 }
 
 bool skinning_weight_pre_draw(Viewer &viewer){
+    //if need to generate handles automatically
     if (select_handles && !selected) {
         //initialization
         handle_id.setConstant(V.rows(), 1, -1);
@@ -368,6 +372,7 @@ bool skinning_weight_pre_draw(Viewer &viewer){
         need_to_compute_skinning_weight = true;
     }
 
+    //acceleration
     //get skinning weight
     if (need_to_compute_skinning_weight) {
         if (selected) {
@@ -386,6 +391,7 @@ bool skinning_weight_pre_draw(Viewer &viewer){
     //Yellow
     Eigen::RowVector3d yellow(1.0, 1.0, 0.0);
     if (visualization_mode == SELECTION) {
+        //show the selection of handles
         for (int i = 0; i < V.rows(); ++i) {
             if (handle_id[i] == coloring_bone_id) {
                 vertex_colors.row(i) = yellow;
@@ -394,13 +400,18 @@ bool skinning_weight_pre_draw(Viewer &viewer){
             }
         }
     } else if (visualization_mode == SKINNING_WEIGHT) {
+        //show the skinning_weight of vertex
         Eigen::VectorXd ones(V.rows());
         ones.setOnes();
 
         VectorXd w_k = vertex_skinning_weight.row(coloring_bone_id);
         vertex_colors = (ones - w_k) * blue + w_k * yellow;
+    } else {
+        //default color
+        vertex_colors.col(0).setZero();
+        vertex_colors.col(1).setZero();
+        vertex_colors.col(2).setOnes();
     }
-    viewer.data().set_colors(vertex_colors);
 
     Eigen::RowVector3d red(1.0, 0.0, 0.0);
     Eigen::RowVector3d green(0.0, 1.0, 0.0);
@@ -409,6 +420,7 @@ bool skinning_weight_pre_draw(Viewer &viewer){
     Eigen::MatrixXd point_colors = Eigen::MatrixXd::Zero(C.rows(), 3);
     Eigen::MatrixXd edge_colors = Eigen::MatrixXd::Zero(BE.rows(), 3);
 
+    //draw skeleton
     //Red color for points
     point_colors.col(0) = Eigen::VectorXd::Ones(C.rows());
     point_colors.row(start) = yellow;
@@ -423,6 +435,7 @@ bool skinning_weight_pre_draw(Viewer &viewer){
     //update the vertex position all the time
     viewer.data().set_mesh(V_original, F);
 
+    viewer.data().set_colors(vertex_colors);
     return false;
 }
 
@@ -515,7 +528,7 @@ Quaterniond quaternion_interpolation(const Quaterniond &q0, const Quaterniond &q
     double theta = std::acos(abs(dot_product));
     double scalar0;
     double scalar1;
-    //very close use linear interpolation
+    //if very close use linear interpolation
     if (abs(theta) < 1e-10) {
         scalar0 = 1 - t;
         scalar1 = t;
@@ -558,7 +571,7 @@ void update_current_frames(int max_frames) {
 void skinning_weight_computation() {
     V = V_original;
     //number of bones
-    //iterate bones and solve Lw*k = 0
+    //iterate bones and solve Lw_k = 0 like assignment5
     vertex_skinning_weight.resize(BE.rows(), V.rows());
     face_skinning_weight.resize(BE.rows(), F.rows());
 
@@ -650,6 +663,7 @@ void handle_selection(int bone_id) {
             min = r;
         }
     }
+    //performance is not so good for 1.5 I choose 2
     min *= 2;
     //find points closer to min
     for (int i = 0; i < V.rows(); ++i) {
@@ -694,8 +708,8 @@ void get_dQ_current(std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eig
         assert(BE.rows() == q_final_list.size());
         for (int i = 0; i < BE.rows(); ++i) {
             Quaterniond q1 = q_final_list[i];
-            Quaterniond q_interp = q0.slerp(t, q1);
-//            Quaterniond q_interp = quaternion_interpolation(q0, q1, t);
+//            Quaterniond q_interp = q0.slerp(t, q1);
+            Quaterniond q_interp = quaternion_interpolation(q0, q1, t);
             dQ.push_back(q_interp);
         }
         // play the video from start to end, from end to start
@@ -706,6 +720,7 @@ void get_dQ_current(std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eig
 }
 
 void get_skinning_weight() {
+    //if need to generate handles
     if (select_handles && !selected) {
         //initialization
         handle_id.setConstant(V.rows(), 1, -1);
@@ -717,6 +732,7 @@ void get_skinning_weight() {
         need_to_compute_skinning_weight = true;
     }
 
+    //acceleration
     //get skinning weight
     if (need_to_compute_skinning_weight) {
         if (selected) {
@@ -729,6 +745,7 @@ void get_skinning_weight() {
     }
 }
 
+//rigid transformation
 void transform_bone_vertex() {
     //iterate bones
     for (int i = 0; i < BE.rows(); ++i) {
@@ -776,9 +793,9 @@ void dual_quaternion_skinning(const MatrixXd &V_original, const MatrixXd &vertex
         Quaterniond be(0,0,0,0);
         // Loop over handles
         for(int k = 0; k < vertex_skinning_weight.rows(); k++) {
-            //check dual quaternion hemisphere
-            if (b0.coeffs().dot(vertex_skinning_weight(k, i) * vQ[k].coeffs()) +
-                be.coeffs().dot(vertex_skinning_weight(k, i) * veQ[k].coeffs()) < 0) {
+            //check dual quaternion hemisphere w.r.t base quaternion q[0]
+            if (vQ[0].coeffs().dot(vQ[k].coeffs()) +
+                veQ[0].coeffs().dot(veQ[k].coeffs()) < 0) {
                 b0.coeffs() += -1 * vertex_skinning_weight(k, i) * vQ[k].coeffs();
                 be.coeffs() += -1 * vertex_skinning_weight(k, i) * veQ[k].coeffs();
             } else {
@@ -816,6 +833,7 @@ void face_blend_skinning(const MatrixXd &V_original, const MatrixXd &face_skinni
         B.row(2 * m + i) = R.row(2);
     }
 
+    //acceleration
     //possion stitching
     //if not prefactored then just do prefactoring!
     bool using_prefactored;
@@ -831,6 +849,7 @@ void face_blend_skinning(const MatrixXd &V_original, const MatrixXd &face_skinni
 
 void vertex_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &vertex_skinning_weight, const vector<Eigen::Quaterniond,
 Eigen::aligned_allocator<Eigen::Quaterniond>> &vQ, const vector<Eigen::Vector3d> &vT, MatrixXd &V) {
+    //acceleration
     if (!vertex_unposed) {
         unpose_displacement.resize(V_EG_pose.rows(), 3);
         V_EG_unposed.resize(V_EG_pose.rows(), 3);
@@ -956,50 +975,45 @@ void face_context_aware_deformation(const MatrixXd &V_original, const MatrixXd &
         // deformation gradient for a face
         if (!decompose_T) {
             Matrix3d T(3, 3);
-            //if buffer not full
-            if (T_f_list.size() < F.rows()) {
-                T.setZero();
-                for (int j = 0; j < num_eg; ++j) {
-                    T += a[j] * deformation_gradient[j][i];
-                }
-                T_f_list.push_back(T);
-            } else {
-                assert(T_f_list.size() == F.rows());
-                T = T_f_list[i];
+            T.setZero();
+            for (int j = 0; j < num_eg; ++j) {
+                T += a[j] * deformation_gradient[j][i];
             }
-            R = R * T;
+            //remember now the rotation is for p.T(1x3)
+            R = T * R;
         } else {
             //decompose T into rotation and skew matrix
             Matrix3d S(3, 3);
             Matrix3d Q_avg(3, 3);
-            //if buffer not full
-            if (S_f_list.size() < F.rows()) {
-                S.setZero();
-                vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> q_list;
-                for (int j = 0; j < num_eg; ++j) {
-                    //already w.r.t to p.T(1x3)
-                    Matrix3d Q_j_f, S_j_f;
+            S.setZero();
+            vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> q_list;
+            for (int j = 0; j < num_eg; ++j) {
+                //already w.r.t to p.T(1x3)
+                Matrix3d Q_j_f, S_j_f;
+                //if buffer not full
+                if (S_j_f_list.size() < F.rows() * num_eg) {
+                    //decompose T into rotation and skew matrix
                     decomposition(deformation_gradient[j][i], Q_j_f, S_j_f);
-                    //w.r.t p.T(1x3)
-                    Quaterniond q(Q_j_f);
-                    q_list.push_back(q);
-                    S += a[j] * S_j_f;
+                    S_j_f_list.push_back(S_j_f);
+                    Q_j_f_list.push_back(Q_j_f);
+                } else {
+                    S_j_f = S_j_f_list[i * num_eg + j];
+                    Q_j_f = Q_j_f_list[i * num_eg + j];
                 }
-                Q_avg = get_avg_rotation(a, q_list);
-                S_f_list.push_back(S);
-                Q_f_list.push_back(Q_avg);
-            } else {
-                assert(S_f_list.size() == F.rows());
-                S = S_f_list[i];
-                Q_avg = Q_f_list[i];
+                S += a[j] * S_j_f;
+                //w.r.t p.T(1x3)
+                Quaterniond q(Q_j_f);
+                q_list.push_back(q);
             }
-            R = R * Q_avg * S;
+            Q_avg = get_avg_rotation(a, q_list);
+            R = S * Q_avg * R;
         }
         B.row(i) = R.row(0);
         B.row(m + i) = R.row(1);
         B.row(2 * m + i) = R.row(2);
     }
 
+    //acceleration
     //possion stitching
     bool using_prefactored;
     //if not prefactored then just do prefactoring!
@@ -1050,6 +1064,7 @@ VectorXd get_a() {
     std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> other_egQ;
     vector<Eigen::Vector3d> current_egT;
     vector<Eigen::Vector3d> other_egT;
+    //acceleration
     //didn't compute c yet
     if (!RBF_interpolated) {
         //RBF coeff
@@ -1100,6 +1115,7 @@ double get_RBF_distance(const std::vector<Eigen::Quaterniond, Eigen::aligned_all
     assert(Q0.size() == T0.size());
     MatrixXd M0 = MatrixXd::Identity(4, 4);
     MatrixXd M1 = MatrixXd::Identity(4, 4);
+    //Frobenius norm between transformation matrix
     for (int i = 0; i < Q0.size(); ++i) {
         Quaterniond q0 = Q0[i];
         Quaterniond q1 = Q1[i];
@@ -1112,8 +1128,13 @@ double get_RBF_distance(const std::vector<Eigen::Quaterniond, Eigen::aligned_all
         Vector3d t1 = T1[i];
         M0.block<3, 1>(0, 3) = t0;
         M1.block<3, 1>(0, 3) = t1;
-
-        sum += (M0 - M1).squaredNorm();
+        /*
+         * not smooth enough if using L2 distance which will amplified error
+         *
+         */
+//        sum += (M0 - M1).squaredNorm();
+        //choose L1 distance
+        sum += (M0 - M1).norm();
     }
 
     double r = sqrt(sum);
@@ -1178,7 +1199,10 @@ MatrixXd get_avg_rotation(const VectorXd &weight, const vector<Eigen::Quaternion
 // H = G.TG E = G.TB
 //derivative w.r.t. Vf => HffVf = -HfcVc + Ef
 void possion_stitching(bool use_prefactored, const MatrixXd &V_old, const MatrixXd &B, MatrixXd &V_new) {
-    //the function will overwrite the global variable!!!!
+    /*
+     * the function will overwrite the global variable!!!!
+     */
+    //acceleration
     if (!use_prefactored) {
         SparseMatrix<double> H;
         igl::grad(V_old, F, G);
@@ -1186,9 +1210,24 @@ void possion_stitching(bool use_prefactored, const MatrixXd &V_old, const Matrix
         free_points.resize(V_old.rows());
         int constrain_cnt = 0;
         int free_cnt = 0;
+        int root_bone_id = 0;
+        // here try to pick a pone with least moving as root_bone to fix
+        // reverse to search for root bone
+        // because the first root_bone intend to stay static
+        // also skip the root_bone with no given handles !!!!!!!!
+        for (int k = P.rows() - 1; k >= 0; --k) {
+            if (P(k) == -1) {
+                for (int i = 0; i < handle_id.size(); ++i) {
+                    if (handle_id[i] == k) {
+                        root_bone_id = k;
+                        break;
+                    }
+                }
+            }
+        }
         for (int i = 0; i < handle_id.size(); ++i) {
             //root handles
-            if (handle_id[i] == 0) {
+            if (handle_id[i] == root_bone_id) {
                 constrain_points[constrain_cnt++] = i;
             } else {
                 free_points[free_cnt++] = i;
