@@ -181,6 +181,8 @@ We can see there are still holes around the elbow in given example poses.
 
 #### Task 8.2.2 skeletal animation using context
 
+**if the gifs are not rendered, please check them in the res folder:**
+
 | without decomposition | with decomposition | details |
 | :---------:                            |        :---------:                           |        -----------                           |
 |<img align="center"  src="./res/wodecomp.gif" width="300">  |<img align="center"  src="./res/decomp.gif" width="300">  |<img align="center"  src="./res/change.gif" width="300">  |
