@@ -2,29 +2,27 @@
 
 Shape Modelling and Geometry Processing course at ETH, feel free to refer the code and report in each section for more details.
 
-**There may be errors if not full marks not gained (Assigment3 is not graded)**
-
-## Assigment1 (10.0/10.0)
+## Assigment1 
 
 * Neighborhood computation (starter)
 * Simple shading
 * Connected components coloring
 * $\sqrt{3}$ subdivision
 
-## Assigment2 (14.0/16.0)
+## Assigment2 
 
 * MLS interpolation
 * Marching cubes surface extraction
 * Point cloud normal estimation via PCA
 
-## Assigment3 (not graded)
+## Assigment3
 
 * Normal estimation
 * Discrete curvature
 * Laplacian smoothing
 * Bilateral smoothing
 
-## Assigment4 (15.0/16.0)
+## Assigment4
 
 Mesh parameterization:
 
@@ -33,14 +31,14 @@ Mesh parameterization:
 * Least Squares Conformal Maps(LSCM) 
 * As-Rigid-As-Possible(ARAP) 
 
-## Assigment5 (16.0/16.0)
+## Assigment5
 
 Shape deformation:
 
 * Multiresolution mesh editing
 * Deformation transfer
 
-## Assigment6 (23.5/24.0)
+## Assigment6
 
 Animation:
 
