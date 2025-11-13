@@ -1,10 +1,4 @@
-# Assignment 2
-Name: 'Sihan Chen'
-
-Legi-Nr: '23-943-079'
-
-## Required results
-Edit this 'README.md' file to report all your results. You only need to update the tables in the reports section by adding screenshots and reporting results.
+# Assignment 2 Implicit Surface Reconstruction
 
 ### Tasks
 
@@ -38,8 +32,6 @@ Please show your answer in screenshot/photos (or link to a PDF). Make sure your 
 | <img align="center"  src="./res/2.png"> |
 
 ### 3 - MLS v.s. Screened Poisson Reconstruction v.s. RIMLS
-
-**No implementation required, you can use [Meshlab](https://www.meshlab.net) to perform the comparisons.**
 
 | model names  | MLS          | Possion             | RIMLS               |
 | :---------:  | :---------:  | :-----------------: | :-----------------: |

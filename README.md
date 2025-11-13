@@ -2,45 +2,56 @@
 
 Shape Modelling and Geometry Processing course at ETH, feel free to refer the code and report in each section for more details.
 
-## Assigment1 
+## Assigment1 Simple Shading & Remeshing
 
 * Neighborhood computation (starter)
 * Simple shading
 * Connected components coloring
 * $\sqrt{3}$ subdivision
 
-## Assigment2 
+![assign_1](./README.assets/assign_1.png)
+
+## Assigment2  Implicit Surface Reconstruction
 
 * MLS interpolation
 * Marching cubes surface extraction
 * Point cloud normal estimation via PCA
 
-## Assigment3
+![assign_2](./README.assets/assign_2.png)
+
+## Assigment3 Differential Properties & Smoothing
 
 * Normal estimation
+
 * Discrete curvature
+
 * Laplacian smoothing
+
 * Bilateral smoothing
 
-## Assigment4
+  ![assign_3](./README.assets/assign_3.png)
 
-Mesh parameterization:
+## Assigment4 Mesh Parameterization
 
 * Uniform Laplacian
+
 * Cotangent Laplacian 
+
 * Least Squares Conformal Maps(LSCM) 
+
 * As-Rigid-As-Possible(ARAP) 
 
-## Assigment5
+  ![assign_4](./README.assets/assign_4.png)
 
-Shape deformation:
+## Assigment5 Shape Deformation
 
 * Multiresolution mesh editing
+
 * Deformation transfer
 
-## Assigment6
+  ![assign_5](./README.assets/assign_5.png)
 
-Animation:
+## Assigment6 Animation
 
 * Skeleton animation
 
@@ -49,3 +60,6 @@ Animation:
 * Dual Quaternion Skinning(DQS)
 * Per-face Blend Skinning with Poisson Stitching
 * Context aware deformation (per-vertex, per-face)
+
+<img align="center"  src="./README.assets/assign_6.gif" width="1000">
+
